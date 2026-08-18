@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kvasir — którego agenta odpalić</title>
+<meta name="description" content="Trzy źródła o modelach AI w jednym miejscu: koszt zadania (CursorBench), dryf jakości (AI Stupid Level) i cennik GitHub Copilot. Jedna odpowiedź: co odpalić do tego zadania.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="wordmark"><span>blink</span><b>neuron</b></div>
+    <h1 style="margin-top:.7rem">Kvasir</h1>
+    <p class="lede">
+      Trzy źródła w jednym miejscu i jedna odpowiedź na pytanie „co odpalić do tego zadania”.
+      Koszt zadania z <b>CursorBench</b>, dryf jakości z <b>AI Stupid Level</b>, dostępność i cennik
+      z <b>GitHub Copilot</b>. Effort jest podany zawsze — bez niego wynik benchmarku nic nie znaczy.
+    </p>
+    <div class="freshness" id="freshness"></div>
+  </header>
+
+  <section id="verdicts-section">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Werdykt na dziś</div>
+        <h2>Trzy role, trzy modele</h2>
+        <p id="verdict-sub"></p>
+      </div>
+      <div class="controls">
+        <button class="toggle" id="toggle-all" aria-pressed="false">Pokaż ukryte modele</button>
+        <button class="toggle" id="refresh">Odśwież</button>
+      </div>
+    </div>
+    <div class="verdicts" id="verdicts"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Czy warto dopłacić</div>
+    <h2>Dystans między rolami</h2>
+    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+      Cyjan znaczy „różnica w cenie jest mała wobec różnicy w jakości” — wtedy bierz droższego.
+      Fiolet znaczy „płacisz dużo za bardzo mało” — wtedy zostań przy tańszym.
+    </p>
+    <div class="gaps" id="gaps"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Szybki wybór</div>
+    <h2>Zadanie → agent</h2>
+    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+      Lista zadań, które realnie tu lądują. Po prawej model wraz z effortem, którym zaczynasz —
+      nie musisz porównywać benchmarków samodzielnie.
+    </p>
+    <div class="table-scroll">
+      <table id="tasks">
+        <thead><tr>
+          <th>Zadanie</th><th>Rola</th><th>Odpalasz</th>
+          <th class="num">Wynik</th><th class="num">$ / zadanie</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Koszt vs jakość</div>
+    <h2>Gdzie leży opłacalność</h2>
+    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+      Każdy punkt to model przy konkretnym efforcie: w poziomie średni koszt zadania (skala
+      logarytmiczna), w pionie wynik CursorBench. Linia łączy modele, których nikt nie bije
+      jednocześnie na cenie i na wyniku.
+    </p>
+    <div class="chart-box">
+      <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Wykres kosztu do wyniku"></svg>
+      <div class="legend">
+        <span><i style="background:#7c5cff"></i> Architekt</span>
+        <span><i style="background:#38e1c4"></i> Worker</span>
+        <span><i style="background:#8b97a8"></i> Zwiadowca</span>
+        <span><i style="background:#3a4257"></i> pozostałe</span>
+      </div>
+    </div>
+    <div class="ladder" id="ladder"></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">AI Stupid Level</div>
+    <h2>Dryf modeli w czasie</h2>
+    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+      Ten sam model pod tą samą nazwą potrafi zwyczajnie osłabnąć. Iskierka to pojedyncze
+      przebiegi benchmarku z ostatnich 7 dni, Δ7d to różnica między pierwszym a ostatnim.
+      Effort nie jest tu publikowany — te przebiegi lecą na domyślnym ustawieniu dostawcy.
+    </p>
+    <div class="table-scroll">
+      <table id="drift">
+        <thead><tr>
+          <th>Model</th><th class="num">Wynik</th><th>7 dni</th>
+          <th class="num">Δ7d</th><th class="num">min–max</th><th>Trend</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">GitHub Copilot</div>
+    <h2>Co mamy w firmie i po ile</h2>
+    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+      Ceny za milion tokenów z dokumentacji GitHuba — to jest ta część, która schodzi z budżetu.
+      Modele bez wyniku CursorBench nie są zbenchmarkowane end-to-end; ich cena jest znana, jakość nie.
+    </p>
+    <div class="table-scroll">
+      <table id="copilot">
+        <thead><tr>
+          <th>Model</th><th>Kategoria</th><th class="num">Input / 1M</th>
+          <th class="num">Cache / 1M</th><th class="num">Output / 1M</th><th class="num">CursorBench</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div class="eyebrow">Jak liczony jest werdykt</div>
+    <div class="method" id="method"></div>
+    <div id="archive"></div>
+    <div class="byline">Krzysztof Prawdzik · BlinkNeuron</div>
+  </footer>
+
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

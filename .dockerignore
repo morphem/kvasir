@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+data
+docs
+tests
+unraid
+deploy
+*.md
+!README.md
+__pycache__
+*.pyc

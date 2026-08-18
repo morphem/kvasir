@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<!--
+  Unraid Community-Applications template for Kvasir.
+
+  Install: copy this file to /boot/config/plugins/dockerMan/templates-user/my-Kvasir.xml
+  on the server, then Docker -> Add Container -> select "kvasir" from the template list.
+  Updates then work the normal Unraid way: the tab shows "update ready" whenever
+  ghcr.io/morphem/kvasir:latest moves, and Apply pulls it.
+-->
+<Container version="2">
+  <Name>kvasir</Name>
+  <Repository>ghcr.io/morphem/kvasir:latest</Repository>
+  <Registry>https://github.com/morphem/kvasir/pkgs/container/kvasir</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/morphem/kvasir/issues</Support>
+  <Project>https://github.com/morphem/kvasir</Project>
+  <Overview>
+    Kvasir — one page that answers which AI agent to start for a given task.
+    Aggregates three live sources: CursorBench (cost, tokens and steps per task, per effort
+    level), AI Stupid Level (model drift over time) and GitHub Copilot's models-and-pricing
+    docs (availability and price). Every reading is archived in SQLite under /data, so the
+    page shows today's answer and keeps the history behind it.
+  </Overview>
+  <Category>Tools: Productivity: Other:</Category>
+  <WebUI>http://[IP]:[PORT:8688]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/morphem/kvasir/main/unraid/my-Kvasir.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/morphem/kvasir/main/assets/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI port" Target="8688" Default="8688" Mode="tcp" Description="HTTP port for the page and the API" Type="Port" Display="always" Required="true" Mask="false">8688</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/kvasir" Mode="rw" Description="SQLite archive of every reading — keep it, this is the history" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kvasir</Config>
+  <Config Name="AI Stupid Level interval (min)" Target="KVASIR_INTERVAL_STUPIDLEVEL" Default="60" Mode="" Description="How often to poll the drift source. It re-scores hourly." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="CursorBench interval (min)" Target="KVASIR_INTERVAL_CURSORBENCH" Default="720" Mode="" Description="How often to poll CursorBench. It changes on the scale of weeks." Type="Variable" Display="advanced" Required="false" Mask="false">720</Config>
+  <Config Name="Copilot pricing interval (min)" Target="KVASIR_INTERVAL_COPILOT" Default="720" Mode="" Description="How often to re-read GitHub's models-and-pricing page." Type="Variable" Display="advanced" Required="false" Mask="false">720</Config>
+  <Config Name="Hidden models" Target="KVASIR_HIDDEN_MODELS" Default="grok-4.5,grok-4.6,fable-5,gpt-5.6-sol,kimi-k3,kimi-k2.7-code,glm-5.2" Mode="" Description="Comma-separated model keys hidden from the default view. They are still collected and archived." Type="Variable" Display="always" Required="false" Mask="false">grok-4.5,grok-4.6,fable-5,gpt-5.6-sol,kimi-k3,kimi-k2.7-code,glm-5.2</Config>
+  <Config Name="Worker cost cap (USD/task)" Target="KVASIR_WORKER_MAX_COST" Default="2.50" Mode="" Description="Most the mid-tier agent may cost per CursorBench task." Type="Variable" Display="advanced" Required="false" Mask="false">2.50</Config>
+  <Config Name="Scout cost cap (USD/task)" Target="KVASIR_SCOUT_MAX_COST" Default="0.60" Mode="" Description="Most the cheap agent may cost per CursorBench task." Type="Variable" Display="advanced" Required="false" Mask="false">0.60</Config>
+</Container>
