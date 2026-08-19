@@ -96,10 +96,33 @@ section { margin-top: 3.4rem; }
   flex-direction: column;
   gap: 0.55rem;
 }
-.card.architect { border-top: 2px solid var(--violet); }
-.card.worker { border-top: 2px solid var(--cyan); }
-.card.scout { border-top: 2px solid var(--dim); }
-.card .role { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.card { overflow: hidden; }
+.card.architect { border-top: 2px solid var(--violet); --accent: var(--violet); --band: rgba(124, 92, 255, 0.13); }
+.card.worker { border-top: 2px solid var(--cyan); --accent: var(--cyan); --band: rgba(56, 225, 196, 0.11); }
+.card.scout { border-top: 2px solid var(--dim); --accent: var(--dim); --band: rgba(139, 151, 168, 0.11); }
+
+/* The role is the first thing to find on the card, so it gets a band across the whole box:
+   the tier's colour, letterspaced caps, and the one-line job description beside it. */
+.role-band {
+  margin: -1.15rem -1.15rem 0.35rem;
+  padding: 0.62rem 1.15rem 0.58rem;
+  background: var(--band);
+  border-bottom: 1px solid var(--edge);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  flex-wrap: wrap;
+}
+.role-name {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: var(--accent);
+}
+.role-line { font-size: 0.82rem; color: var(--dim); text-align: right; }
 .pick-name { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
 .pick-effort {
   font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase;

@@ -92,16 +92,14 @@ function renderVerdicts(view) {
     const effort = pick.effort === "default" ? "" : `<em class="pick-effort">${escapeHtml(pick.effort_label)}</em>`;
     box.append(
       tag(`<article class="card ${id}">
-        <div class="role">
-          <div>
-            <div class="eyebrow">${escapeHtml(verdict.tier.name)}</div>
-            <div class="dim" style="font-size:.85rem">${escapeHtml(verdict.tier.role)}</div>
-          </div>
+        <div class="role-band">
+          <span class="role-name">${escapeHtml(verdict.tier.name)}</span>
+          <span class="role-line">${escapeHtml(verdict.tier.role)}</span>
         </div>
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
         <div class="metrics">
           <div class="metric"><b>${pct(pick.score)}</b><span>CursorBench</span></div>
-          <div class="metric"><b>${usd(pick.cost_usd)}</b><span>$ / zadanie</span></div>
+          <div class="metric"><b>${usd(pick.cost_usd)}</b><span>$ / task</span></div>
           <div class="metric"><b>${pick.steps}</b><span>steps</span></div>
         </div>
         <p class="why">${escapeHtml(verdict.why)}</p>
