@@ -22,6 +22,16 @@ function ago(iso) {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
+function until(iso) {
+  if (!iso) return null;
+  const minutes = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (minutes <= 0) return "due now";
+  if (minutes < 60) return `next in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `next in ${hours} h ${rest} min` : `next in ${hours} h`;
+}
+
 function tag(html) {
   const wrapper = document.createElement("template");
   wrapper.innerHTML = html.trim();
@@ -48,10 +58,11 @@ function renderFreshness(sources) {
       source.interval_minutes >= 60
         ? `every ${Math.round(source.interval_minutes / 60)} h`
         : `every ${source.interval_minutes} min`;
+    const due = until(source.next_run) || every;
     box.append(
       tag(`<a class="chip" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">
              <i class="dot ${dot}"></i>${escapeHtml(source.label)}
-             <b class="dim" style="font-weight:400">${escapeHtml(ago(source.captured_at))} · ${every}</b>
+             <b class="dim" style="font-weight:400">${escapeHtml(ago(source.captured_at))} · ${escapeHtml(due)}</b>
            </a>`)
     );
   });
@@ -391,7 +402,8 @@ async function load() {
   const view = await response.json();
   state.view = view;
   if (!view.ready) {
-    $("#verdict-sub").textContent = "Collecting from the sources — refresh in a moment.";
+    $("#verdict-sub").textContent =
+      "Collecting from the sources — this page reloads itself every 5 minutes.";
   }
   renderFreshness(view.sources);
   renderVerdicts(view);
@@ -409,13 +421,6 @@ $("#toggle-all").addEventListener("click", (event) => {
   event.currentTarget.setAttribute("aria-pressed", String(state.showAll));
   event.currentTarget.textContent = state.showAll ? "Hide filtered models" : "Show hidden models";
   load();
-});
-
-$("#refresh").addEventListener("click", async (event) => {
-  event.currentTarget.textContent = "Refreshing…";
-  await fetch("/api/refresh", { method: "POST" });
-  await load();
-  event.currentTarget.textContent = "Refresh";
 });
 
 load();

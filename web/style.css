@@ -72,6 +72,9 @@ header { padding: 2.5rem 0 1.5rem; border-bottom: 1px solid var(--edge); }
   gap: 0.45rem;
   align-items: center;
   text-decoration: none;
+  /* On a phone the chip breaks between its parts rather than mid-label. */
+  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .chip:hover { border-color: var(--dim); color: var(--text); }
 .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cyan); flex: none; }
@@ -186,4 +189,75 @@ footer a:hover { color: var(--text); }
 @media (max-width: 620px) {
   .metrics { grid-template-columns: repeat(3, 1fr); }
   .wrap { padding: 0 0.9rem 4rem; }
+}
+
+/* ---- header: prose keeps its measure, the space beside it carries the colour key ---- */
+.header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(250px, 0.7fr);
+  gap: 1.2rem 2.6rem;
+  align-items: start;
+  margin-top: 0.9rem;
+}
+.lede { max-width: 66ch; margin: 0; }
+.key { border-left: 1px solid var(--edge); padding-left: 1.2rem; }
+.key p { margin: 0.45rem 0 0; font-size: 0.86rem; color: var(--dim); }
+.key p b { color: var(--text); font-weight: 600; }
+.swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 0.5rem; }
+.cyan-bg { background: var(--cyan); }
+.violet-bg { background: var(--violet); }
+.dim-bg { background: var(--dim); }
+
+/* ---- the name, glossed ---- */
+.gloss { position: relative; cursor: help; outline: none; }
+.gloss-mark {
+  /* em-relative so the mark keeps its place against the headline at every clamp step */
+  font-family: var(--mono);
+  font-size: 0.26em;
+  font-weight: 400;
+  color: var(--dim);
+  vertical-align: 1.25em;
+  margin-left: 0.5em;
+  letter-spacing: 0;
+}
+.gloss:hover .gloss-mark,
+.gloss:focus .gloss-mark { color: var(--cyan); }
+
+/* The thresholds line is data, not prose — one line reads better than a ragged block. */
+#verdict-sub { max-width: 92ch; }
+.gloss-card {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  left: 0;
+  z-index: 20;
+  width: min(46ch, calc(100vw - 3rem));
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  border-top: 2px solid var(--cyan);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.5;
+  color: var(--dim);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease, visibility 0.14s;
+}
+.gloss-card b { color: var(--text); }
+.gloss-card i { display: block; margin-top: 0.5rem; color: var(--cyan); font-style: normal; }
+.gloss:hover .gloss-card,
+.gloss:focus .gloss-card,
+.gloss:focus-within .gloss-card {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+@media (max-width: 900px) {
+  .header-grid { grid-template-columns: 1fr; }
+  .key { border-left: none; border-top: 1px solid var(--edge); padding: 0.9rem 0 0; }
 }

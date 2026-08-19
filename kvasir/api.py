@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +30,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 # In the container the package is installed into site-packages while the page stays at
 # /app/web, so the location is explicit there and inferred from the repo layout locally.
+# Manual collection is a courtesy to the owner, not a button on a shared page: three third
+# party sites are on the other end of it. The page shows a countdown instead and this endpoint
+# refuses to be leaned on.
+MANUAL_REFRESH_COOLDOWN_S = 300
+_last_manual_refresh = 0.0
+
 WEB_DIR = os.environ.get("KVASIR_WEB_DIR") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web"
 )
@@ -60,19 +68,34 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Kvasir", version=__version__, lifespan=lifespan)
 
 
+def _next_run(last_run: str | None, interval_minutes: int) -> str | None:
+    """When this source is due again — the page counts down to it."""
+    if not last_run:
+        return None
+    try:
+        stamp = datetime.fromisoformat(last_run)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return (stamp + timedelta(minutes=interval_minutes)).isoformat(timespec="seconds")
+
+
 def _sources_block() -> dict:
     status = db.source_status(settings.db_path)
     out = {}
     for source, module in MODULES.items():
         _, meta = db.latest(settings.db_path, source)
         entry = status.get(source, {})
+        interval = scheduler.interval_minutes(source)
         out[source] = {
             "label": SOURCE_LABELS.get(source, source),
             "url": getattr(module, "SITE_URL", module.URL),
             "api_url": module.URL,
-            "interval_minutes": scheduler.interval_minutes(source),
+            "interval_minutes": interval,
             "captured_at": meta.get("captured_at"),
             "last_run": entry.get("last_run"),
+            "next_run": _next_run(entry.get("last_run"), interval),
             "last_change": entry.get("last_change"),
             "snapshots": entry.get("snapshots", 0),
             "runs": entry.get("runs", 0),
@@ -175,9 +198,25 @@ def history(
 
 @app.post("/api/refresh")
 async def refresh(source: str | None = None):
+    """Collect now. Rate limited, and it never triggers the history backfill.
+
+    The scheduler already keeps everything current; this exists for the moment after a
+    deploy when waiting an hour to see the page populated is silly.
+    """
+    global _last_manual_refresh
     if source and source not in MODULES:
         raise HTTPException(404, "unknown source")
-    return {"results": await collect_all([source] if source else None, with_backfill=True)}
+    waited = time.monotonic() - _last_manual_refresh
+    if waited < MANUAL_REFRESH_COOLDOWN_S:
+        raise HTTPException(
+            429,
+            detail={
+                "error": "collection was run recently",
+                "retry_after_s": int(MANUAL_REFRESH_COOLDOWN_S - waited),
+            },
+        )
+    _last_manual_refresh = time.monotonic()
+    return {"results": await collect_all([source] if source else None)}
 
 
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

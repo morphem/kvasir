@@ -14,13 +14,30 @@
 
   <header>
     <div class="wordmark"><span>blink</span><b>neuron</b></div>
-    <h1 style="margin-top:.7rem">Kvasir</h1>
-    <p class="lede">
-      Three sources in one place, and one answer to the only question that matters at the start of
-      a task: <b>which agent do I run</b>. Cost per task from <b>CursorBench</b>, quality drift from
-      <b>AI Stupid Level</b>, availability and price from <b>GitHub Copilot</b>. The effort level is
-      always named — without it a benchmark number means nothing.
-    </p>
+    <h1 style="margin-top:.7rem">
+      <span class="gloss" tabindex="0" role="note" aria-describedby="kvasir-myth">Kvasir<span class="gloss-mark">?</span>
+        <span class="gloss-card" id="kvasir-myth">
+          <b>Kvasir</b> — in Norse myth, a being made out of the mixed knowledge of two warring
+          tribes of gods: the wisest thing alive, and the one you went to for counsel. Later killed
+          for it, and brewed into the mead of poetry.
+          <i>This page mixes three sources and answers one question. Same idea, fewer casualties.</i>
+        </span>
+      </span>
+    </h1>
+    <div class="header-grid">
+      <p class="lede">
+        Three sources in one place, and one answer to the only question that matters at the start of
+        a task: <b>which agent do I run</b>. Cost per task from <b>CursorBench</b>, quality drift from
+        <b>AI Stupid Level</b>, availability and price from <b>GitHub Copilot</b>. The effort level is
+        always named — without it a benchmark number means nothing.
+      </p>
+      <div class="key">
+        <div class="eyebrow">How to read it</div>
+        <p><i class="swatch cyan-bg"></i><b>Cyan</b> — the numbers line up. Take it.</p>
+        <p><i class="swatch violet-bg"></i><b>Violet</b> — a gap. You are paying a lot for a little.</p>
+        <p><i class="swatch dim-bg"></i><b>Effort</b> — always named on the model, never implied.</p>
+      </div>
+    </div>
     <div class="freshness" id="freshness"></div>
   </header>
 
@@ -33,7 +50,6 @@
       </div>
       <div class="controls">
         <button class="toggle" id="toggle-all" aria-pressed="false">Show hidden models</button>
-        <button class="toggle" id="refresh">Refresh</button>
       </div>
     </div>
     <div class="verdicts" id="verdicts"></div>

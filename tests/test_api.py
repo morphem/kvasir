@@ -10,6 +10,7 @@ from kvasir.config import settings
 
 
 def seed():
+    """Fill the archive the way a real collection round would — snapshot plus run log."""
     db.init(settings.db_path)
     for module, name in (
         (cursorbench, "cursorbench.html"),
@@ -17,7 +18,11 @@ def seed():
         (stupidlevel, "stupidlevel-scores.json"),
     ):
         rows, meta = module.parse(fixture(name))
-        db.archive(settings.db_path, module.SOURCE, rows, meta)
+        started = db.now_iso()
+        snapshot_id, changed = db.archive(settings.db_path, module.SOURCE, rows, meta)
+        db.log_run(
+            settings.db_path, module.SOURCE, started, True, changed, len(rows), None, snapshot_id
+        )
 
 
 def client() -> TestClient:
@@ -51,6 +56,26 @@ def test_hidden_models_can_be_unhidden_on_demand():
     everything = api.get("/api/view", params={"all": True}).json()
     assert len(everything["candidates"]) >= len(default_view["candidates"])
     assert everything["showing_all"] is True
+
+
+def test_view_says_when_each_source_is_due_again():
+    """The page counts down instead of offering a button that hits three foreign sites."""
+    body = client().get("/api/view").json()
+    for source in body["sources"].values():
+        assert source["next_run"] > source["last_run"]
+
+
+def test_manual_refresh_cannot_be_leaned_on():
+    from kvasir import api
+
+    api._last_manual_refresh = 0.0
+    with TestClient(app) as api_client:
+        first = api_client.post("/api/refresh", params={"source": "nope"})
+        assert first.status_code == 404          # unknown source, no cooldown spent
+        api._last_manual_refresh = __import__("time").monotonic()
+        blocked = api_client.post("/api/refresh")
+        assert blocked.status_code == 429
+        assert blocked.json()["detail"]["retry_after_s"] > 0
 
 
 def test_the_page_itself_is_served():
