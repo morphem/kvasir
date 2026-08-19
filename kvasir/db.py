@@ -219,9 +219,17 @@ def drift_series(db_path: str, model_key: str, series: str = "aisl-run", days: i
 
 
 def drift_summary(db_path: str, days: int = 7) -> dict[str, dict]:
-    """First/last score per model in the window — the "80 yesterday, 67 today" number."""
+    """How far a model moved across the window — the "80 yesterday, 67 today" number.
+
+    Individual benchmark runs swing wildly (a model sitting at 73 produces single runs from
+    62 to 91), so comparing the literal first and last point measures noise, not drift.
+    The delta compares the mean of the first fifth of the window against the mean of the
+    last fifth, which is small enough to stay responsive and wide enough to stop one bad
+    run from inventing a trend.
+    """
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
-    out: dict[str, dict] = {}
+    series: dict[str, list[float]] = {}
+    stamps: dict[str, tuple[str, str]] = {}
     with connect(db_path) as conn:
         rows = conn.execute(
             """SELECT model_key, captured_at, score FROM drift_history
@@ -229,17 +237,25 @@ def drift_summary(db_path: str, days: int = 7) -> dict[str, dict]:
             (since,),
         ).fetchall()
     for row in rows:
-        entry = out.setdefault(
-            row["model_key"],
-            {"first": row["score"], "first_at": row["captured_at"], "points": 0, "min": row["score"], "max": row["score"]},
-        )
-        entry["last"] = row["score"]
-        entry["last_at"] = row["captured_at"]
-        entry["points"] += 1
-        entry["min"] = min(entry["min"], row["score"])
-        entry["max"] = max(entry["max"], row["score"])
-    for entry in out.values():
-        entry["delta"] = round(entry.get("last", entry["first"]) - entry["first"], 1)
+        series.setdefault(row["model_key"], []).append(row["score"])
+        first_at = stamps.get(row["model_key"], (row["captured_at"], row["captured_at"]))[0]
+        stamps[row["model_key"]] = (first_at, row["captured_at"])
+
+    out: dict[str, dict] = {}
+    for model_key, scores in series.items():
+        window = max(1, len(scores) // 5)
+        head = sum(scores[:window]) / window
+        tail = sum(scores[-window:]) / window
+        out[model_key] = {
+            "first": scores[0],
+            "last": scores[-1],
+            "first_at": stamps[model_key][0],
+            "last_at": stamps[model_key][1],
+            "points": len(scores),
+            "min": min(scores),
+            "max": max(scores),
+            "delta": round(tail - head, 1),
+        }
     return out
 
 

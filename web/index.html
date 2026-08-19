@@ -91,8 +91,9 @@
     <h2>Model drift over time</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
       The same model under the same name can simply get worse. The sparkline shows individual
-      benchmark runs from the last 7 days; Δ7d is the difference between the first and the last.
-      Effort is not published here — these runs use each provider's default setting.
+      benchmark runs from the last 7 days — thin line raw, thick line smoothed. Single runs swing
+      hard, so Δ7d compares the average of the first fifth of the window with the average of the
+      last fifth. Effort is not published here — these runs use each provider's default setting.
     </p>
     <div class="table-scroll">
       <table id="drift">

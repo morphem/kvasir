@@ -67,3 +67,18 @@ def test_a_failed_run_is_recorded_and_visible():
     status = db.source_status(path)["cursorbench"]
     assert status["failures"] == 1
     assert status["last_error"].startswith("HTTPError")
+
+
+def test_drift_delta_ignores_a_single_loud_run():
+    """One good run at the end must not erase a week of decline."""
+    path = fresh_db()
+    high = [{"captured_at": f"2026-08-1{d}T{h:02d}:00:00Z", "score": 80}
+            for d in (1, 2) for h in range(5)]
+    low = [{"captured_at": f"2026-08-1{d}T{h:02d}:00:00Z", "score": 60}
+           for d in (3, 4) for h in range(5)]
+    low[-1]["score"] = 90  # the loud one
+    db.store_drift_points(path, "sonnet-4.5", "aisl-run", high + low)
+    summary = db.drift_summary(path, days=3650)["sonnet-4.5"]
+    assert summary["points"] == 20
+    assert summary["last"] == 90        # the raw series keeps it
+    assert summary["delta"] < -10       # the verdict does not fall for it
