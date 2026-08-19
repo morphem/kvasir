@@ -47,6 +47,19 @@ The vhost itself is `deploy/kvasir.blinkneuron.eu.conf`, installed to
 `/mnt/user/appdata/swag/nginx/site-confs/`. It sits in `site-confs` rather than `proxy-confs`
 because those are reserved for `*.prawdzik.eu` subdomains.
 
+## Access: deliberately open
+
+The ecosystem default is Authelia forward-auth on every new app (`xreal/CONSTITUTION.md` §6).
+Kvasir ships **without it**, on purpose: the page is meant to be handed to colleagues, and every
+number on it is already public — it quotes three public sources and holds no account data, no keys
+and nothing about our code. If that changes, protect it by adding the Authelia snippet to
+`deploy/kvasir.blinkneuron.eu.conf` inside the `location /` block:
+
+```nginx
+include /config/nginx/authelia-server.conf;
+include /config/nginx/authelia-location.conf;
+```
+
 ## 4. Smoke test
 
 ```bash
