@@ -284,3 +284,51 @@ footer a:hover { color: var(--text); }
   .header-grid { grid-template-columns: 1fr; }
   .key { border-left: none; border-top: 1px solid var(--edge); padding: 0.9rem 0 0; }
 }
+
+/* ---- AI credit tiers: a switch, not a settings screen ---- */
+.tier-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem 1.6rem;
+  flex-wrap: wrap;
+  margin-top: 2.2rem;
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--edge);
+}
+.tier-bar-text p { margin: 0.3rem 0 0; font-size: 0.85rem; color: var(--dim); max-width: 62ch; }
+.tier-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.tier-tab {
+  font-family: var(--mono);
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 0.42rem 0.8rem;
+  cursor: pointer;
+  color: var(--dim);
+  text-align: left;
+  line-height: 1.25;
+}
+.tier-tab b { display: block; font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; }
+.tier-tab span { font-size: 0.68rem; letter-spacing: 0.06em; opacity: 0.75; }
+.tier-tab:hover { border-color: var(--dim); color: var(--text); }
+.tier-tab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--cyan);
+  border-color: var(--cyan);
+}
+.tier-tab[aria-selected="true"] span { opacity: 0.85; }
+
+/* ---- monthly budget ---- */
+.budget-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  overflow: hidden;
+  margin: 1.1rem 0 0.2rem;
+}
+.budget-bar span { display: block; height: 100%; background: var(--cyan); transition: width 0.35s ease; }
+.budget-bar span.tight { background: var(--amber); }
+.budget-bar span.over { background: var(--violet); }
+#budget-title { margin-top: 0.35rem; }

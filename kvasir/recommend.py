@@ -13,6 +13,7 @@ quietly getting worse this week should not win on last month's benchmark.
 
 from __future__ import annotations
 
+from . import budget
 from .catalog import TASKS, TIER_BY_ID, TIERS
 from .naming import EFFORT_LABELS, label as model_label, vendor_of
 
@@ -212,6 +213,18 @@ def _why(tier_id: str, pick: dict, replaced: dict | None, top_score: float, cfg)
     return base
 
 
+def frontier(candidates: list[dict]) -> list[dict]:
+    """The cost/quality frontier: models nothing else beats on price and score at once."""
+    ordered = sorted(candidates, key=lambda c: (c["cost_uusd"], -c["score"]))
+    out: list[dict] = []
+    best = float("-inf")
+    for candidate in ordered:
+        if candidate["score"] > best:
+            out.append(candidate)
+            best = candidate["score"]
+    return out
+
+
 def value_ladder(candidates: list[dict]) -> list[dict]:
     """The cost/quality frontier, rung by rung.
 
@@ -219,16 +232,9 @@ def value_ladder(candidates: list[dict]) -> list[dict]:
     That is where "pay pennies more, get a much better result" becomes visible — and where
     paying five times more for half a point becomes visible too.
     """
-    ordered = sorted(candidates, key=lambda c: (c["cost_uusd"], -c["score"]))
-    frontier: list[dict] = []
-    best = float("-inf")
-    for candidate in ordered:
-        if candidate["score"] > best:
-            frontier.append(candidate)
-            best = candidate["score"]
-
     rungs = []
-    for index, candidate in enumerate(frontier):
+    steps = frontier(candidates)
+    for index, candidate in enumerate(steps):
         step = {
             "label": candidate["label"],
             "key": candidate["key"],
@@ -241,7 +247,7 @@ def value_ladder(candidates: list[dict]) -> list[dict]:
             "copilot": bool(candidate["copilot"]),
         }
         if index:
-            previous = frontier[index - 1]
+            previous = steps[index - 1]
             d_score = candidate["score"] - previous["score"]
             d_cost = candidate["cost_uusd"] - previous["cost_uusd"]
             per_pp = d_cost / d_score if d_score > 0 else None
@@ -318,12 +324,25 @@ def resolve_tasks(verdicts: dict) -> list[dict]:
     return rows
 
 
-def build(cb_rows, ai_rows, cp_rows, cfg, hidden: list[str]) -> dict:
+def build(cb_rows, ai_rows, cp_rows, cfg, hidden: list[str], credit_usd: float | None = None) -> dict:
     candidates, copilot_only = merge(cb_rows, ai_rows, cp_rows)
     hidden_set = {h.lower() for h in hidden}
     visible = [c for c in candidates if c["key"].lower() not in hidden_set]
     verdicts = pick_tiers(visible, cfg)
+    rate = credit_usd or budget.CREDIT_USD_FALLBACK
+    plans = budget.plans(cfg.tiers, visible, frontier(visible), rate, verdicts)
+    for plan in plans.values():
+        # The distance between roles is worth seeing per tier: on a tight budget two roles can
+        # land on one model, and then the gap is genuinely zero.
+        picks = {role: data for role, data in plan["roles"].items() if data.get("pick")}
+        plan["gaps"] = gaps(picks)
     return {
+        "credit_usd": rate,
+        "credit_usd_verified": credit_usd is not None,
+        "budget_tiers": cfg.tiers,
+        "default_tier": cfg.default_tier,
+        "plans": plans,
+        "assumptions": budget.assumptions(rate),
         "tiers": TIERS,
         "verdicts": verdicts,
         "tasks": resolve_tasks(verdicts),

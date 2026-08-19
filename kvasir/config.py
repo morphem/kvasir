@@ -17,6 +17,23 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _tiers(name: str, default: str) -> list[dict]:
+    """"Basic:13000,Heavy:100000" -> the AI-credit tiers this page reports on.
+
+    Tiers are an organisation's own allocation of Copilot AI credits, not a GitHub product,
+    so they belong in configuration rather than in the code.
+    """
+    out = []
+    for part in _csv(name, default):
+        label, _, credits = part.partition(":")
+        try:
+            amount = int(credits)
+        except ValueError:
+            continue
+        out.append({"id": label.strip().lower(), "name": label.strip(), "credits": amount})
+    return out
+
+
 def _csv(name: str, default: str) -> list[str]:
     raw = os.environ.get(name, default)
     return [part.strip() for part in raw.split(",") if part.strip()]
@@ -41,6 +58,13 @@ class Settings:
             "grok-4.5,grok-4.6,fable-5,gpt-5.6-sol,kimi-k3,kimi-k2.7-code,glm-5.2",
         )
     )
+
+    # Monthly AI-credit allocations we report on, and the one selected when a visitor has
+    # never picked. 1 credit = $0.01, so 13000 credits is a $130 month.
+    tiers: list[dict] = field(
+        default_factory=lambda: _tiers("KVASIR_TIERS", "Basic:13000,Heavy:100000,Power:200000")
+    )
+    default_tier: str = os.environ.get("KVASIR_DEFAULT_TIER", "heavy")
 
     # Tier thresholds, in USD per CursorBench task. Shown in the UI next to the verdict.
     worker_max_cost_usd: float = float(os.environ.get("KVASIR_WORKER_MAX_COST", "2.50"))

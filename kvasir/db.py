@@ -105,10 +105,18 @@ def archive(db_path: str, source: str, rows: list[dict], meta: dict) -> tuple[in
     captured_at = now_iso()
     with connect(db_path) as conn:
         previous = conn.execute(
-            "SELECT id, payload_hash FROM snapshot WHERE source=? ORDER BY id DESC LIMIT 1",
+            "SELECT id, payload_hash, meta_json FROM snapshot WHERE source=? ORDER BY id DESC LIMIT 1",
             (source,),
         ).fetchone()
         if previous and previous["payload_hash"] == digest:
+            # Same reading, so no new snapshot — but metadata we learned to extract since the
+            # last write (a benchmark version, the AI-credit rate) must not be stuck in the
+            # past just because the numbers held still.
+            fresh_meta = json.dumps(meta, default=str)
+            if fresh_meta != previous["meta_json"]:
+                conn.execute(
+                    "UPDATE snapshot SET meta_json=? WHERE id=?", (fresh_meta, previous["id"])
+                )
             return previous["id"], False
 
         cursor = conn.execute(

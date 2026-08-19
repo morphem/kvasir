@@ -11,12 +11,19 @@ name rather than by column index so a new column does not shift every price by o
 
 from __future__ import annotations
 
-from ..htmlparse import tables, usd_to_uusd
+import re
+
+from ..htmlparse import tables, text_lines, usd_to_uusd
 from ..naming import model_key, split_effort, vendor_of
 
 SOURCE = "copilot"
 URL = "https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing"
 LABEL = "GitHub Copilot"
+
+# "the total is converted into AI credits, where 1 AI credit = $0.01 USD" — the sentence that
+# turns every price on this page into a credit budget. Read from the page rather than hardcoded,
+# because the whole tier layer is built on it.
+_CREDIT_RATE = re.compile(r"1 AI credit\s*=\s*\$(?P<usd>\d+(?:\.\d+)?)\s*USD", re.I)
 
 _PRICE_COLUMNS = {
     "input": "input_uusd",
@@ -74,7 +81,16 @@ def parse(raw: str) -> tuple[list[dict], dict]:
 
     # Long-context variants repeat the model; the default tier is the one we price against.
     default_tier = [r for r in rows if r["tier"].lower().startswith("default") or not r["tier"]]
-    return rows, {"row_count": len(rows), "default_tier_rows": len(default_tier)}
+    meta = {"row_count": len(rows), "default_tier_rows": len(default_tier)}
+
+    for line in text_lines(raw):
+        found = _CREDIT_RATE.search(line)
+        if found:
+            meta["credit_usd"] = float(found["usd"])
+            meta["credit_usd_quote"] = line[:400]
+            break
+
+    return rows, meta
 
 
 async def fetch(client) -> tuple[list[dict], dict]:

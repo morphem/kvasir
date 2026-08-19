@@ -41,6 +41,14 @@
     <div class="freshness" id="freshness"></div>
   </header>
 
+  <div class="tier-bar">
+    <div class="tier-bar-text">
+      <div class="eyebrow">AI credits tier</div>
+      <p id="tier-note"></p>
+    </div>
+    <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
+  </div>
+
   <section id="verdicts-section">
     <div class="section-head">
       <div>
@@ -53,6 +61,23 @@
       </div>
     </div>
     <div class="verdicts" id="verdicts"></div>
+  </section>
+
+  <section id="budget-section">
+    <div class="eyebrow">A month on this tier</div>
+    <h2 id="budget-title"></h2>
+    <p class="dim" id="budget-verdict" style="margin:.5rem 0 0;max-width:80ch"></p>
+    <div class="budget-bar" aria-hidden="true"><span id="budget-fill"></span></div>
+    <div class="table-scroll">
+      <table id="budget-table">
+        <thead><tr>
+          <th>Role</th><th>Model</th><th class="num">Credits / task</th>
+          <th class="num">Tasks / month</th><th class="num">Credits / month</th><th class="num">Share used</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="dim" id="budget-assumptions" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
   <section>

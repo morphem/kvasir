@@ -2,13 +2,39 @@
    No framework and no chart library on purpose — the whole page is one file the browser
    parses in a blink, and the SVG here is simpler than the config a chart library would need. */
 
-const state = { view: null, showAll: false };
+const TIER_STORAGE_KEY = "kvasir.tier";
+const state = { view: null, showAll: false, tier: null };
+
+/* The tier is a view setting, not a user account: it lives in localStorage, survives every
+   reload and deploy, and falls back to the tier the server nominates. */
+function storedTier() {
+  try {
+    return localStorage.getItem(TIER_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeTier(id) {
+  try {
+    localStorage.setItem(TIER_STORAGE_KEY, id);
+  } catch {
+    /* private browsing: the switch still works, it just forgets between visits */
+  }
+}
+
+function plan() {
+  const plans = (state.view && state.view.plans) || {};
+  return plans[state.tier] || Object.values(plans)[0] || null;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const usd = (value) =>
   value === null || value === undefined ? "—" : `$${value < 1 ? value.toFixed(2) : value.toFixed(2)}`;
 const pct = (value) => (value === null || value === undefined ? "—" : `${value.toFixed(1)}%`);
 const num = (value) => (value === null || value === undefined ? "—" : value.toLocaleString("en-US"));
+const credits = (value) =>
+  value === null || value === undefined ? "—" : Math.round(value).toLocaleString("en-US");
 
 function ago(iso) {
   if (!iso) return "no data";
@@ -68,6 +94,35 @@ function renderFreshness(sources) {
   });
 }
 
+/* ---------- tier switch ---------- */
+
+function renderTierTabs(view) {
+  const tabs = $("#tier-tabs");
+  tabs.innerHTML = "";
+  (view.budget_tiers || []).forEach((tier) => {
+    const tierPlan = view.plans[tier.id] || {};
+    const active = tier.id === state.tier;
+    const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
+      <b>${escapeHtml(tier.name)}</b>
+      <span>${Math.round(tier.credits / 1000)}K credits · $${num(tierPlan.usd)}</span>
+    </button>`);
+    button.addEventListener("click", () => {
+      state.tier = tier.id;
+      storeTier(tier.id);
+      renderAll();
+    });
+    tabs.append(button);
+  });
+
+  const current = plan();
+  const quote = view.credit_usd_verified
+    ? `1 AI credit = $${view.credit_usd.toFixed(2)}, taken from GitHub's own pricing page`
+    : `1 AI credit assumed at $${view.credit_usd.toFixed(2)} — the rate could not be read from the docs today`;
+  $("#tier-note").textContent = current
+    ? `Showing what ${current.name} affords: ${num(current.credits)} credits a month, about $${num(current.usd)}. ${quote}.`
+    : quote;
+}
+
 /* ---------- verdict cards ---------- */
 
 function driftBadge(drift) {
@@ -84,37 +139,117 @@ function copilotBadge(copilot) {
 
 function renderVerdicts(view) {
   const box = $("#verdicts");
+  const current = plan();
   box.innerHTML = "";
-  ["architect", "worker", "scout"].forEach((id) => {
-    const verdict = view.verdicts[id];
-    if (!verdict) return;
-    const pick = verdict.pick;
-    const effort = pick.effort === "default" ? "" : `<em class="pick-effort">${escapeHtml(pick.effort_label)}</em>`;
+  view.tiers.forEach((role) => {
+    const slot = current && current.roles ? current.roles[role.id] : null;
+    if (!slot) return;
+    const pick = slot.pick;
+    if (!pick) {
+      box.append(
+        tag(`<article class="card ${role.id}">
+          <div class="role-band">
+            <span class="role-name">${escapeHtml(role.name)}</span>
+            <span class="role-line">${escapeHtml(role.role)}</span>
+          </div>
+          <div class="pick-name dim">Nothing fits</div>
+          <p class="why">${escapeHtml(slot.why || "")}</p>
+        </article>`)
+      );
+      return;
+    }
+    const effort =
+      pick.effort === "default" ? "" : `<em class="pick-effort">${escapeHtml(pick.effort_label)}</em>`;
+    const notes = [];
+    if (slot.downgraded_from) {
+      notes.push(`Best regardless of budget: ${slot.downgraded_from}. This tier does not reach it.`);
+    }
+    if (slot.same_as) {
+      notes.push(`Same model as the ${slot.same_as} at this tier — one answer, not two.`);
+    }
     box.append(
-      tag(`<article class="card ${id}">
+      tag(`<article class="card ${role.id}">
         <div class="role-band">
-          <span class="role-name">${escapeHtml(verdict.tier.name)}</span>
-          <span class="role-line">${escapeHtml(verdict.tier.role)}</span>
+          <span class="role-name">${escapeHtml(role.name)}</span>
+          <span class="role-line">${escapeHtml(role.role)}</span>
         </div>
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
         <div class="metrics">
           <div class="metric"><b>${pct(pick.score)}</b><span>CursorBench</span></div>
-          <div class="metric"><b>${usd(pick.cost_usd)}</b><span>$ / task</span></div>
-          <div class="metric"><b>${pick.steps}</b><span>steps</span></div>
+          <div class="metric"><b>${credits(slot.per_task_credits)}</b><span>credits / task</span></div>
+          <div class="metric"><b>${credits(slot.month_credits)}</b><span>credits / mo</span></div>
         </div>
-        <p class="why">${escapeHtml(verdict.why)}</p>
-        ${verdict.overlap_note ? `<p class="note">${escapeHtml(verdict.overlap_note)}</p>` : ""}
-        ${verdict.relaxed ? '<p class="note">Threshold relaxed — nothing fitted the limit once the hidden models were filtered out.</p>' : ""}
+        <p class="why">${escapeHtml(slot.why || "")}</p>
+        ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
         <div class="badges">${driftBadge(pick.drift)}${copilotBadge(pick.copilot)}
-          <span class="badge">${num(pick.tokens)} tokens</span></div>
+          <span class="badge">${usd(pick.cost_usd)} / task</span>
+          <span class="badge">${pick.steps} steps</span></div>
       </article>`)
     );
   });
+
   const thresholds = view.thresholds;
   $("#verdict-sub").textContent =
-    `Architect: the cheapest model within ${thresholds.architect_score_slack_pp} pp of the top score. ` +
-    `Worker: the best score under $${thresholds.worker_max_cost_usd.toFixed(2)} per task. ` +
-    `Scout: the best score under $${thresholds.scout_max_cost_usd.toFixed(2)}.`;
+    `Filled under this tier's monthly credit budget. Architect: the best model its share affords. ` +
+    `Worker: upgrades while they cost at most $${thresholds.steep_usd_per_pp.toFixed(2)} per point. ` +
+    `Scout: bargain upgrades only, at most $${thresholds.bargain_usd_per_pp.toFixed(2)} per point.`;
+}
+
+/* ---------- monthly budget ---------- */
+
+function renderBudget(view) {
+  const current = plan();
+  if (!current) return;
+  const assumptions = view.assumptions;
+  const used = current.used_pct ?? 0;
+
+  $("#budget-title").textContent =
+    `${current.name}: ${credits(current.month_credits)} of ${num(current.credits)} credits`;
+
+  const fill = $("#budget-fill");
+  fill.style.width = `${Math.min(100, used)}%`;
+  fill.className = used > 100 ? "over" : used > 80 ? "tight" : "";
+
+  const referenceLine = current.reference_fits
+    ? `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits here — ${current.reference_used_pct}% of the tier, so the budget is not what decides your models.`
+    : `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits — ${current.reference_used_pct}% of this tier. At ${current.name} the budget, not the benchmark, picks your models.`;
+
+  $("#budget-verdict").textContent =
+    `About $${num(current.month_usd)} a month for an average engineer's workload, leaving ` +
+    `${credits(current.headroom_credits)} credits of headroom (${Math.max(0, 100 - used).toFixed(0)}%). ` +
+    referenceLine;
+
+  const body = $("#budget-table tbody");
+  body.innerHTML = "";
+  view.tiers.forEach((role) => {
+    const slot = current.roles[role.id];
+    if (!slot) return;
+    const label = slot.pick ? slot.pick.label : "—";
+    body.append(
+      tag(`<tr>
+        <td><span class="tier-chip ${role.accent}">${escapeHtml(role.name)}</span></td>
+        <td class="pick-cell">${escapeHtml(label)}</td>
+        <td class="num">${credits(slot.per_task_credits)}</td>
+        <td class="num">${slot.tasks_per_month ?? "—"}</td>
+        <td class="num">${credits(slot.month_credits)}</td>
+        <td class="num ${slot.share_used_pct > 100 ? "violet" : "dim"}">${
+          slot.share_used_pct === undefined || slot.share_used_pct === null
+            ? "—"
+            : slot.share_used_pct.toFixed(0) + "%"
+        }</td>
+      </tr>`)
+    );
+  });
+
+  $("#budget-assumptions").textContent =
+    `Assumes ${assumptions.working_days} working days × ${assumptions.tasks_per_day} agent tasks = ` +
+    `${assumptions.tasks_per_month} tasks a month (${assumptions.tasks_by_role.architect} planning, ` +
+    `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
+    `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
+    `The budget is split ${Math.round(assumptions.budget_shares.architect * 100)}/` +
+    `${Math.round(assumptions.budget_shares.worker * 100)}/` +
+    `${Math.round(assumptions.budget_shares.scout * 100)} between the roles. ` +
+    `Code completions are not billed in credits, so they are not counted here.`;
 }
 
 /* ---------- gap tracks: the fit-axis device ---------- */
@@ -150,19 +285,22 @@ function renderGaps(gaps) {
 
 /* ---------- task table ---------- */
 
-function renderTasks(tasks) {
+function renderTasks(view) {
   const body = $("#tasks tbody");
+  const current = plan();
   body.innerHTML = "";
-  tasks.forEach((task) => {
-    const [name, effort] = task.pick_label.split(" · ");
+  view.tasks.forEach((task) => {
+    const slot = current && current.roles ? current.roles[task.tier] : null;
+    const pick = slot && slot.pick;
+    const [name, effort] = (pick ? pick.label : "—").split(" · ");
     body.append(
       tag(`<tr>
         <td>${escapeHtml(task.label)}<br><span class="dim" style="font-size:.82rem">${escapeHtml(task.note)}</span></td>
         <td><span class="tier-chip ${task.accent}">${escapeHtml(task.tier_name)}</span></td>
         <td class="pick-cell">${escapeHtml(name)}${effort ? `<em>${escapeHtml(effort)}</em>` : ""}
-            ${task.pick_in_copilot ? "" : '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>'}</td>
-        <td class="num">${pct(task.pick_score)}</td>
-        <td class="num">${usd(task.pick_cost_usd)}</td>
+            ${pick && !pick.copilot ? '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>' : ""}</td>
+        <td class="num">${pick ? pct(pick.score) : "—"}</td>
+        <td class="num">${slot ? credits(slot.per_task_credits) : "—"}</td>
       </tr>`)
     );
   });
@@ -188,8 +326,9 @@ function renderScatter(view) {
   const sy = (score) => H - pad.b - ((score - y0) / (y1 - y0)) * (H - pad.t - pad.b);
 
   const picks = {};
-  Object.entries(view.verdicts).forEach(([id, verdict]) => {
-    picks[`${verdict.pick.key}|${verdict.pick.effort}`] = id;
+  const current = plan();
+  Object.entries((current && current.roles) || {}).forEach(([id, slot]) => {
+    if (slot.pick) picks[`${slot.pick.key}|${slot.pick.effort}`] = id;
   });
   const colour = { architect: "#7c5cff", worker: "#38e1c4", scout: "#8b97a8" };
 
@@ -384,7 +523,13 @@ function renderMethod(view) {
     <div>Thresholds: architect ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
       worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.
       Under $${thresholds.bargain_usd_per_pp.toFixed(2)} per point is a bargain, over $${thresholds.steep_usd_per_pp.toFixed(2)} is overpaying.</div>
-    <div>Hidden from the default view: ${escapeHtml(hidden || "nothing")}. They are still collected and archived.</div>`;
+    <div>Hidden from the default view because they are not enabled in our Copilot subscription:
+      ${escapeHtml(hidden || "nothing")}. They are still collected and archived.</div>
+    <div>Credits: 1 AI credit = $${view.credit_usd.toFixed(2)}, ${
+      view.credit_usd_verified ? "read today from" : "assumed — not readable today in"
+    } GitHub's pricing page${
+      view.credit_usd_quote ? `: <i class="dim">“${escapeHtml(view.credit_usd_quote)}”</i>` : ""
+    }</div>`;
 
   const archive = view.archive;
   $("#archive").innerHTML = `<p class="mono" style="font-size:.75rem;letter-spacing:.1em">
@@ -395,23 +540,39 @@ function renderMethod(view) {
 
 /* ---------- boot ---------- */
 
-async function load() {
-  const response = await fetch(`/api/view${state.showAll ? "?all=1" : ""}`, { cache: "no-store" });
-  const view = await response.json();
-  state.view = view;
-  if (!view.ready) {
-    $("#verdict-sub").textContent =
-      "Collecting from the sources — this page reloads itself every 5 minutes.";
-  }
+function renderAll() {
+  const view = state.view;
+  if (!view) return;
+  const current = plan();
+  renderTierTabs(view);
   renderFreshness(view.sources);
   renderVerdicts(view);
-  renderGaps(view.gaps);
-  renderTasks(view.tasks);
+  renderBudget(view);
+  renderGaps((current && current.gaps) || view.gaps);
+  renderTasks(view);
   renderScatter(view);
   renderLadder(view.ladder);
   renderDrift(view.drift);
   renderCopilot(view);
   renderMethod(view);
+}
+
+async function load() {
+  const response = await fetch(`/api/view${state.showAll ? "?all=1" : ""}`, { cache: "no-store" });
+  const view = await response.json();
+  state.view = view;
+
+  const remembered = storedTier();
+  if (!view.plans || !view.plans[state.tier]) {
+    state.tier =
+      remembered && view.plans && view.plans[remembered] ? remembered : view.default_tier;
+  }
+
+  if (!view.ready) {
+    $("#verdict-sub").textContent =
+      "Collecting from the sources — this page reloads itself every 5 minutes.";
+  }
+  renderAll();
 }
 
 $("#toggle-all").addEventListener("click", (event) => {

@@ -46,6 +46,18 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
 - **Deduplication is by content hash.** Polling hourly writes a snapshot only when something moved,
   so the archive is a change log, not 168 copies of Tuesday. `source_run` still records every poll,
   including the failures — that is the honesty log.
+- **The AI-credit rate is a quoted fact, not a constant.** GitHub's pricing page says "1 AI credit
+  = $0.01 USD"; the collector parses that sentence into snapshot metadata and the whole tier layer
+  (`kvasir/budget.py`) divides by it. Never replace it with a literal — if the sentence stops
+  parsing, the page must say the rate is assumed. `docs/credits.md` holds the quotes and the
+  workload model.
+- **Snapshot dedup is on rows, so metadata is refreshed in place.** An unchanged reading writes no
+  new snapshot, but `db.archive` updates `meta_json` — otherwise a fact the parser only learned to
+  extract today would never reach the database, because the numbers had not moved.
+- **The workload model is published with its answer.** Days, tasks per day, role mix, overhead and
+  the budget split are constants at the top of `budget.py` and are printed on the page. Re-tuning
+  them until the answer looks better is falsifying the answer; replace the model with measured
+  usage instead.
 - **Hidden models are hidden, never dropped.** `KVASIR_HIDDEN_MODELS` filters the default view;
   collection and archiving always cover everything the sources publish. `/api/view?all=1` shows
   them.

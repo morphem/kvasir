@@ -82,3 +82,14 @@ def test_drift_delta_ignores_a_single_loud_run():
     assert summary["points"] == 20
     assert summary["last"] == 90        # the raw series keeps it
     assert summary["delta"] < -10       # the verdict does not fall for it
+
+
+def test_unchanged_rows_still_refresh_metadata():
+    """A parser that learns a new fact must be able to store it without a data change."""
+    path = fresh_db()
+    db.archive(path, "copilot", ROWS, {"row_count": 2})
+    snapshot_id, changed = db.archive(path, "copilot", ROWS, {"row_count": 2, "credit_usd": 0.01})
+    assert changed is False
+    assert db.archive_stats(path)["snapshots"] == 1
+    _, meta = db.latest(path, "copilot")
+    assert meta["credit_usd"] == 0.01
