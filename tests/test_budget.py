@@ -92,3 +92,23 @@ def test_assumptions_are_published_with_the_answer():
     assert sum(assumptions["role_mix"].values()) == 1.0
     assert sum(assumptions["budget_shares"].values()) == 1.0
     assert assumptions["overhead"] >= 1.0
+
+
+def test_the_drift_veto_applies_inside_a_tier_plan_too():
+    """Affordability decides what is possible; drift still decides what is sane."""
+    cb = [
+        {"model_key": "falling", "effort": "high", "rank": 1, "score": 60.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+        {"model_key": "steady", "effort": "high", "rank": 2, "score": 59.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+    ]
+    ai = [
+        {"model_key": "falling", "score": 40, "trend": "down", "status": "warning", "is_stale": False},
+        {"model_key": "steady", "score": 70, "trend": "stable", "status": "good", "is_stale": False},
+    ]
+    settings = Settings(tiers=[{"id": "roomy", "name": "Roomy", "credits": 1_000_000}])
+    payload = recommend.build(cb, ai, [], settings, [], credit_usd=0.01)
+    architect = payload["plans"]["roomy"]["roles"]["architect"]
+    assert architect["pick"]["key"] == "steady"
+    assert architect["drift_replaced"] == "Falling · High"
+    assert "sliding" in architect["why"]

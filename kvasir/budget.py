@@ -38,6 +38,18 @@ BARGAIN_USD_PER_PP = 0.15
 
 CREDIT_USD_FALLBACK = 0.01
 
+# A model whose AI Stupid Level score is sliding, or already flagged, loses a role to a
+# comparable model that is holding steady — at most this far behind on score.
+DRIFT_DOWN_STATUSES = {"warning", "critical"}
+DRIFT_MAX_SCORE_LOSS_PP = 1.5
+
+
+def drifting(candidate: dict) -> bool:
+    drift = candidate.get("drift")
+    if not drift:
+        return False
+    return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
+
 
 def tasks_per_month() -> dict[str, float]:
     total = WORKING_DAYS * TASKS_PER_DAY
@@ -77,6 +89,18 @@ def _walk_ladder(frontier: list[dict], per_task_credits: float, credit_usd: floa
     return pick
 
 
+def _avoid_drift(pick: dict, affordable: list[dict]):
+    """Trade a sliding model for a steady one, as long as the trade is nearly free."""
+    if not drifting(pick):
+        return pick, None
+    for other in sorted(affordable, key=lambda c: -c["score"]):
+        if other is pick or drifting(other):
+            continue
+        if other["score"] >= pick["score"] - DRIFT_MAX_SCORE_LOSS_PP:
+            return other, pick
+    return pick, None
+
+
 def _best_affordable(candidates: list[dict], per_task_credits: float, credit_usd: float):
     affordable = [c for c in candidates if _fits(c, per_task_credits, credit_usd)]
     if not affordable:
@@ -84,23 +108,37 @@ def _best_affordable(candidates: list[dict], per_task_credits: float, credit_usd
     return max(affordable, key=lambda c: (c["score"], -c["cost_uusd"]))
 
 
-def _why(role: str, pick: dict, per_task_budget: float, per_task: float, tasks: float) -> str:
+def _why(
+    role: str,
+    pick: dict,
+    per_task_budget: float,
+    per_task: float,
+    tasks: float,
+    drift_replaced: dict | None = None,
+) -> str:
     """Why this model, in this role, at this tier — in the terms the budget is managed in."""
     price = f"{per_task:.0f} credits a task"
     if role == "architect":
-        return (
+        base = (
             f"Best model this tier's planning share affords: {price} against a "
             f"{per_task_budget:.0f}-credit ceiling, {tasks:g} planning tasks a month."
         )
-    if role == "worker":
-        return (
+    elif role == "worker":
+        base = (
             f"Climbs the value ladder while each step costs at most ${FAIR_USD_PER_PP:.2f} per "
             f"point and stays under {per_task_budget:.0f} credits a task. Lands at {price}."
         )
-    return (
-        f"Takes only bargain upgrades (at most ${BARGAIN_USD_PER_PP:.2f} per point) — mechanical "
-        f"work does not repay more. {price}."
-    )
+    else:
+        base = (
+            f"Takes only bargain upgrades (at most ${BARGAIN_USD_PER_PP:.2f} per point) — mechanical "
+            f"work does not repay more. {price}."
+        )
+    if drift_replaced:
+        base += (
+            f" Not {drift_replaced['label']}: that one is sliding on AI Stupid Level, and the "
+            "swap costs almost nothing."
+        )
+    return base
 
 
 def plan_for_tier(
@@ -118,9 +156,16 @@ def plan_for_tier(
 
         if role == "architect":
             pick = _best_affordable(candidates, per_task, credit_usd)
+            pool = [c for c in candidates if _fits(c, per_task, credit_usd)]
         else:
             ceiling = FAIR_USD_PER_PP if role == "worker" else BARGAIN_USD_PER_PP
             pick = _walk_ladder(frontier, per_task, credit_usd, ceiling)
+            pool = [c for c in frontier if _fits(c, per_task, credit_usd)]
+        if pick is not None:
+            # The budget decides what is affordable; drift still decides what is sane.
+            pick, drift_replaced = _avoid_drift(pick, pool)
+        else:
+            drift_replaced = None
         if pick is None:
             # Nothing on the board fits this share — say so instead of inventing a pick.
             roles[role] = {
@@ -141,7 +186,8 @@ def plan_for_tier(
         best = (reference.get(role) or {}).get("pick")
         roles[role] = {
             "pick": pick,
-            "why": _why(role, pick, per_task, per_task_credits, monthly[role]),
+            "why": _why(role, pick, per_task, per_task_credits, monthly[role], drift_replaced),
+            "drift_replaced": drift_replaced["label"] if drift_replaced else None,
             "share_credits": round(share_credits),
             "per_task_budget_credits": round(per_task),
             "per_task_credits": round(per_task_credits, 1),

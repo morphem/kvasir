@@ -119,7 +119,8 @@ function renderTierTabs(view) {
     ? `1 AI credit = $${view.credit_usd.toFixed(2)}, taken from GitHub's own pricing page`
     : `1 AI credit assumed at $${view.credit_usd.toFixed(2)} — the rate could not be read from the docs today`;
   $("#tier-note").textContent = current
-    ? `Showing what ${current.name} affords: ${num(current.credits)} credits a month, about $${num(current.usd)}. ${quote}.`
+    ? `Showing what the ${current.name} tier affords: ${num(current.credits)} credits a month, ` +
+      `about $${num(current.usd)}. ${quote}.`
     : quote;
 }
 
@@ -163,6 +164,9 @@ function renderVerdicts(view) {
     const notes = [];
     if (slot.downgraded_from) {
       notes.push(`Best regardless of budget: ${slot.downgraded_from}. This tier does not reach it.`);
+    }
+    if (slot.drift_replaced) {
+      notes.push(`Drift veto: ${slot.drift_replaced} scores as well but is sliding on AI Stupid Level.`);
     }
     if (slot.same_as) {
       notes.push(`Same model as the ${slot.same_as} at this tier — one answer, not two.`);
@@ -520,10 +524,16 @@ function renderMethod(view) {
       always for the effort level named on the card. Drift comes from AI Stupid Level and acts as a
       veto rather than another number in an average: a model on the way down loses to a comparable
       model that is holding steady.</div>
-    <div>Thresholds: architect ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
-      worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.
-      Under $${thresholds.bargain_usd_per_pp.toFixed(2)} per point is a bargain, over $${thresholds.steep_usd_per_pp.toFixed(2)} is overpaying.</div>
-    <div>Hidden from the default view because they are not enabled in our Copilot subscription:
+    <div>Roles are filled inside the selected tier's monthly credit budget, split
+      ${Math.round(view.assumptions.budget_shares.architect * 100)}/${Math.round(view.assumptions.budget_shares.worker * 100)}/${Math.round(view.assumptions.budget_shares.scout * 100)}:
+      the architect takes the best model its share affords, the worker climbs the value ladder while
+      a point costs at most $${thresholds.steep_usd_per_pp.toFixed(2)}, the scout takes bargains only
+      (at most $${thresholds.bargain_usd_per_pp.toFixed(2)} per point).</div>
+    <div>The merit-only shortlist quoted for comparison ignores the budget entirely: architect
+      ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
+      worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.</div>
+    <div>Hidden from the default view because they are not enabled in the organisation's Copilot
+      subscription:
       ${escapeHtml(hidden || "nothing")}. They are still collected and archived.</div>
     <div>Credits: 1 AI credit = $${view.credit_usd.toFixed(2)}, ${
       view.credit_usd_verified ? "read today from" : "assumed — not readable today in"

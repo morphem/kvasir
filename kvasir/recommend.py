@@ -17,8 +17,6 @@ from . import budget
 from .catalog import TASKS, TIER_BY_ID, TIERS
 from .naming import EFFORT_LABELS, label as model_label, vendor_of
 
-DRIFT_DOWN_STATUSES = {"warning", "critical"}
-SWAP_MAX_SCORE_LOSS_PP = 1.5
 SWAP_MAX_COST_FACTOR = 1.3
 
 # Value-ladder verdicts, in micro-dollars per percentage point of CursorBench score.
@@ -107,21 +105,14 @@ def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tupl
     return candidates, copilot_only
 
 
-def drifting(candidate: dict) -> bool:
-    drift = candidate.get("drift")
-    if not drift:
-        return False
-    return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
-
-
 def _swap_for_drift(pick: dict, pool: list[dict]) -> tuple[dict, dict | None]:
     """If the winner is drifting, take the nearest non-drifting model instead."""
-    if not drifting(pick):
+    if not budget.drifting(pick):
         return pick, None
     for other in sorted(pool, key=lambda c: -c["score"]):
-        if other is pick or drifting(other):
+        if other is pick or budget.drifting(other):
             continue
-        if other["score"] < pick["score"] - SWAP_MAX_SCORE_LOSS_PP:
+        if other["score"] < pick["score"] - budget.DRIFT_MAX_SCORE_LOSS_PP:
             continue
         if pick["cost_uusd"] and other["cost_uusd"] > pick["cost_uusd"] * SWAP_MAX_COST_FACTOR:
             continue

@@ -12,6 +12,13 @@ rule that UI copy is Polish (`xreal/CONSTITUTION.md` §1): the page is shared wi
 every source it quotes is English, so a Polish shell around English data would only add a
 translation layer to maintain. Conversation with the owner stays Polish.
 
+**Audience: one organisation, internally — and the page never names it.** The model board is
+filtered to what that organisation's Copilot subscription enables (`KVASIR_HIDDEN_MODELS` is that
+filter, not a taste preference), and the budget layer works in its AI-credit tiers — Basic 13K,
+Heavy 100K, Power 200K. Employer, client and project names stay off the page and out of this repo:
+it is publicly reachable, so everything here has to be something three public sources already say.
+Company data, code and account details never appear, and must not start to.
+
 Infra conventions (Unraid, appdata layout, SWAG, deploy doctrine) are owned by
 `homelab/CLAUDE.md` and `xreal/CONSTITUTION.md`. This repo does not restate them.
 

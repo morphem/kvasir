@@ -2,13 +2,17 @@
 
 **Which agent do I start for this task, today?**
 
+Built for internal use inside one organisation, where the model list is whatever its GitHub Copilot
+subscription enables and the budget is an AI-credit tier. Hosted on a personal domain so it is one
+link away; it carries no company data — every number comes from three public sources.
+
 One page that merges three sources into one answer, and keeps the history behind it:
 
 | Source | What it contributes |
 |---|---|
 | [CursorBench](https://cursor.com/cursorbench) | Cost, tokens and steps per real task — **always per effort level** |
 | [AI Stupid Level](https://aistupidlevel.info/) | Drift: whether a model is quietly getting worse under the same name |
-| [GitHub Copilot docs](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) | What is available at work, and what a million tokens costs |
+| [GitHub Copilot docs](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) | What our Copilot enables, and what a million tokens costs |
 
 Three roles come out of it — **architect** (plans and decomposes), **worker** (does the typical
 job), **scout** (cheap and mechanical) — each filled by whichever model wins on today's data, not

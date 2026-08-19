@@ -59,8 +59,8 @@ class Settings:
         )
     )
 
-    # Monthly AI-credit allocations we report on, and the one selected when a visitor has
-    # never picked. 1 credit = $0.01, so 13000 credits is a $130 month.
+    # The organisation's AI-credit allocations, and the one selected when a visitor has never
+    # picked. 1 credit = $0.01, so 13000 credits is a $130 month.
     tiers: list[dict] = field(
         default_factory=lambda: _tiers("KVASIR_TIERS", "Basic:13000,Heavy:100000,Power:200000")
     )

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kvasir — which agent to start</title>
-<meta name="description" content="Three sources about AI models in one place: cost per task (CursorBench), quality drift (AI Stupid Level) and GitHub Copilot pricing. One answer: which agent to start for this task.">
+<meta name="description" content="Which AI agent to start for a task, against your GitHub Copilot AI-credit tier: cost per task (CursorBench), quality drift (AI Stupid Level) and Copilot pricing in one place.">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
 <link rel="stylesheet" href="/style.css">
@@ -43,7 +43,7 @@
 
   <div class="tier-bar">
     <div class="tier-bar-text">
-      <div class="eyebrow">AI credits tier</div>
+      <div class="eyebrow">Organisation AI credits tier</div>
       <p id="tier-note"></p>
     </div>
     <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
@@ -149,11 +149,11 @@
 
   <section>
     <div class="eyebrow">GitHub Copilot</div>
-    <h2>What we have at work, and what it costs</h2>
+    <h2>What our Copilot enables, and what it costs</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
       Prices per million tokens from GitHub's documentation — this is the part that comes out of the
-      budget. Models without a CursorBench score are not benchmarked end to end: their price is
-      known, their quality is not.
+      AI-credit budget. Models without a CursorBench score are not benchmarked end to end: their
+      price is known, their quality is not.
     </p>
     <div class="table-scroll">
       <table id="copilot">
@@ -170,6 +170,12 @@
     <div class="eyebrow">How the verdict is computed</div>
     <div class="method" id="method"></div>
     <div id="archive"></div>
+    <p class="dim" style="font-size:.85rem;margin:1.2rem 0 0">
+      Built for internal use inside one organisation — the model list mirrors what its Copilot
+      subscription actually enables, and the tiers are the AI-credit allocations it grants. Hosted
+      on a personal domain so it is one link away, and it carries no company data: every number on
+      the page comes from three public sources.
+    </p>
     <div class="byline">Krzysztof Prawdzik · BlinkNeuron</div>
   </footer>
 

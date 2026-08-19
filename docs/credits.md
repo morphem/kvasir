@@ -14,8 +14,8 @@ GitHub states the rate in one sentence on the pricing page, twice:
 
 — <https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing>
 
-So a tier's dollar equivalent is just `credits × $0.01`, and the numbers we were given check out
-exactly: 13,000 → $130, 100,000 → $1,000, 200,000 → $2,000.
+So a tier's dollar equivalent is just `credits × $0.01`, and the organisation's three tiers check
+out exactly: **Basic** 13,000 → $130, **Heavy** 100,000 → $1,000, **Power** 200,000 → $2,000.
 
 The collector parses that sentence out of the page (`kvasir/collectors/copilot.py`,
 `_CREDIT_RATE`) and stores it with the snapshot, so the whole tier layer rests on a quoted fact
@@ -36,6 +36,8 @@ being quietly wrong — and the footer prints the sentence it is standing on.
    3,900 on Copilot Enterprise — that is $19 and $39. A 13,000-credit tier is therefore an internal
    *allocation out of the pool* (and largely paid usage), not something a licence includes.
    [Source](https://docs.github.com/en/copilot/concepts/billing/usage-based-billing-for-organizations-and-enterprises).
+   Practically: Basic/Heavy/Power are allocations out of the company pool, and a light month by
+   one engineer subsidises a heavy month by another.
 
 ## The month we model
 
@@ -66,7 +68,7 @@ made-up task type.
 Both ceilings are the same thresholds the value ladder shows on the page, so nothing here is a
 private knob.
 
-## What that produces (data of 2026-08-19)
+## What that produces for these tiers (data of 2026-08-19)
 
 | Tier | Architect | Worker | Scout | Month | Used |
 |---|---|---|---|---|---|
