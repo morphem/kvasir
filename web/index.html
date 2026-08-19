@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kvasir — którego agenta odpalić</title>
-<meta name="description" content="Trzy źródła o modelach AI w jednym miejscu: koszt zadania (CursorBench), dryf jakości (AI Stupid Level) i cennik GitHub Copilot. Jedna odpowiedź: co odpalić do tego zadania.">
+<title>Kvasir — which agent to start</title>
+<meta name="description" content="Three sources about AI models in one place: cost per task (CursorBench), quality drift (AI Stupid Level) and GitHub Copilot pricing. One answer: which agent to start for this task.">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
 <link rel="stylesheet" href="/style.css">
@@ -16,9 +16,10 @@
     <div class="wordmark"><span>blink</span><b>neuron</b></div>
     <h1 style="margin-top:.7rem">Kvasir</h1>
     <p class="lede">
-      Trzy źródła w jednym miejscu i jedna odpowiedź na pytanie „co odpalić do tego zadania”.
-      Koszt zadania z <b>CursorBench</b>, dryf jakości z <b>AI Stupid Level</b>, dostępność i cennik
-      z <b>GitHub Copilot</b>. Effort jest podany zawsze — bez niego wynik benchmarku nic nie znaczy.
+      Three sources in one place, and one answer to the only question that matters at the start of
+      a task: <b>which agent do I run</b>. Cost per task from <b>CursorBench</b>, quality drift from
+      <b>AI Stupid Level</b>, availability and price from <b>GitHub Copilot</b>. The effort level is
+      always named — without it a benchmark number means nothing.
     </p>
     <div class="freshness" id="freshness"></div>
   </header>
@@ -26,40 +27,40 @@
   <section id="verdicts-section">
     <div class="section-head">
       <div>
-        <div class="eyebrow">Werdykt na dziś</div>
-        <h2>Trzy role, trzy modele</h2>
+        <div class="eyebrow">Today's verdict</div>
+        <h2>Three roles, three models</h2>
         <p id="verdict-sub"></p>
       </div>
       <div class="controls">
-        <button class="toggle" id="toggle-all" aria-pressed="false">Pokaż ukryte modele</button>
-        <button class="toggle" id="refresh">Odśwież</button>
+        <button class="toggle" id="toggle-all" aria-pressed="false">Show hidden models</button>
+        <button class="toggle" id="refresh">Refresh</button>
       </div>
     </div>
     <div class="verdicts" id="verdicts"></div>
   </section>
 
   <section>
-    <div class="eyebrow">Czy warto dopłacić</div>
-    <h2>Dystans między rolami</h2>
+    <div class="eyebrow">Is the upgrade worth it</div>
+    <h2>The distance between roles</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Cyjan znaczy „różnica w cenie jest mała wobec różnicy w jakości” — wtedy bierz droższego.
-      Fiolet znaczy „płacisz dużo za bardzo mało” — wtedy zostań przy tańszym.
+      Cyan means the price gap is small next to the quality gap — take the dearer model, even for
+      simple work. Violet means you are paying a lot for very little — stay on the cheaper one.
     </p>
     <div class="gaps" id="gaps"></div>
   </section>
 
   <section>
-    <div class="eyebrow">Szybki wybór</div>
-    <h2>Zadanie → agent</h2>
+    <div class="eyebrow">Quick pick</div>
+    <h2>Task → agent</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Lista zadań, które realnie tu lądują. Po prawej model wraz z effortem, którym zaczynasz —
-      nie musisz porównywać benchmarków samodzielnie.
+      The jobs that actually land here. On the right, the model and the effort level you start
+      with — so you do not have to compare benchmarks yourself.
     </p>
     <div class="table-scroll">
       <table id="tasks">
         <thead><tr>
-          <th>Zadanie</th><th>Rola</th><th>Odpalasz</th>
-          <th class="num">Wynik</th><th class="num">$ / zadanie</th>
+          <th>Task</th><th>Role</th><th>Start with</th>
+          <th class="num">Score</th><th class="num">$ / task</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -67,20 +68,19 @@
   </section>
 
   <section>
-    <div class="eyebrow">Koszt vs jakość</div>
-    <h2>Gdzie leży opłacalność</h2>
+    <div class="eyebrow">Cost vs quality</div>
+    <h2>Where the value sits</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Każdy punkt to model przy konkretnym efforcie: w poziomie średni koszt zadania (skala
-      logarytmiczna), w pionie wynik CursorBench. Linia łączy modele, których nikt nie bije
-      jednocześnie na cenie i na wyniku.
+      Every dot is a model at one effort level: average cost per task across (log scale), CursorBench
+      score up. The line joins the models nothing else beats on price and score at the same time.
     </p>
     <div class="chart-box">
-      <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Wykres kosztu do wyniku"></svg>
+      <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Cost against score"></svg>
       <div class="legend">
-        <span><i style="background:#7c5cff"></i> Architekt</span>
+        <span><i style="background:#7c5cff"></i> Architect</span>
         <span><i style="background:#38e1c4"></i> Worker</span>
-        <span><i style="background:#8b97a8"></i> Zwiadowca</span>
-        <span><i style="background:#3a4257"></i> pozostałe</span>
+        <span><i style="background:#8b97a8"></i> Scout</span>
+        <span><i style="background:#3a4257"></i> everything else</span>
       </div>
     </div>
     <div class="ladder" id="ladder"></div>
@@ -88,16 +88,16 @@
 
   <section>
     <div class="eyebrow">AI Stupid Level</div>
-    <h2>Dryf modeli w czasie</h2>
+    <h2>Model drift over time</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Ten sam model pod tą samą nazwą potrafi zwyczajnie osłabnąć. Iskierka to pojedyncze
-      przebiegi benchmarku z ostatnich 7 dni, Δ7d to różnica między pierwszym a ostatnim.
-      Effort nie jest tu publikowany — te przebiegi lecą na domyślnym ustawieniu dostawcy.
+      The same model under the same name can simply get worse. The sparkline shows individual
+      benchmark runs from the last 7 days; Δ7d is the difference between the first and the last.
+      Effort is not published here — these runs use each provider's default setting.
     </p>
     <div class="table-scroll">
       <table id="drift">
         <thead><tr>
-          <th>Model</th><th class="num">Wynik</th><th>7 dni</th>
+          <th>Model</th><th class="num">Score</th><th>7 days</th>
           <th class="num">Δ7d</th><th class="num">min–max</th><th>Trend</th>
         </tr></thead>
         <tbody></tbody>
@@ -107,16 +107,17 @@
 
   <section>
     <div class="eyebrow">GitHub Copilot</div>
-    <h2>Co mamy w firmie i po ile</h2>
+    <h2>What we have at work, and what it costs</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Ceny za milion tokenów z dokumentacji GitHuba — to jest ta część, która schodzi z budżetu.
-      Modele bez wyniku CursorBench nie są zbenchmarkowane end-to-end; ich cena jest znana, jakość nie.
+      Prices per million tokens from GitHub's documentation — this is the part that comes out of the
+      budget. Models without a CursorBench score are not benchmarked end to end: their price is
+      known, their quality is not.
     </p>
     <div class="table-scroll">
       <table id="copilot">
         <thead><tr>
-          <th>Model</th><th>Kategoria</th><th class="num">Input / 1M</th>
-          <th class="num">Cache / 1M</th><th class="num">Output / 1M</th><th class="num">CursorBench</th>
+          <th>Model</th><th>Category</th><th class="num">Input / 1M</th>
+          <th class="num">Cached / 1M</th><th class="num">Output / 1M</th><th class="num">CursorBench</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -124,7 +125,7 @@
   </section>
 
   <footer>
-    <div class="eyebrow">Jak liczony jest werdykt</div>
+    <div class="eyebrow">How the verdict is computed</div>
     <div class="method" id="method"></div>
     <div id="archive"></div>
     <div class="byline">Krzysztof Prawdzik · BlinkNeuron</div>

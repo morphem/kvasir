@@ -8,18 +8,18 @@ const $ = (sel) => document.querySelector(sel);
 const usd = (value) =>
   value === null || value === undefined ? "—" : `$${value < 1 ? value.toFixed(2) : value.toFixed(2)}`;
 const pct = (value) => (value === null || value === undefined ? "—" : `${value.toFixed(1)}%`);
-const num = (value) => (value === null || value === undefined ? "—" : value.toLocaleString("pl-PL"));
+const num = (value) => (value === null || value === undefined ? "—" : value.toLocaleString("en-US"));
 
 function ago(iso) {
-  if (!iso) return "brak danych";
+  if (!iso) return "no data";
   const then = new Date(iso);
   const minutes = Math.round((Date.now() - then.getTime()) / 60000);
-  if (minutes < 1) return "przed chwilą";
-  if (minutes < 60) return `${minutes} min temu`;
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} godz. temu`;
+  if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  return days === 1 ? "wczoraj" : `${days} dni temu`;
+  return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
 function tag(html) {
@@ -46,8 +46,8 @@ function renderFreshness(sources) {
     const dot = failing ? "bad" : overdue ? "stale" : "";
     const every =
       source.interval_minutes >= 60
-        ? `co ${Math.round(source.interval_minutes / 60)} godz.`
-        : `co ${source.interval_minutes} min`;
+        ? `every ${Math.round(source.interval_minutes / 60)} h`
+        : `every ${source.interval_minutes} min`;
     box.append(
       tag(`<a class="chip" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">
              <i class="dot ${dot}"></i>${escapeHtml(source.label)}
@@ -60,15 +60,15 @@ function renderFreshness(sources) {
 /* ---------- verdict cards ---------- */
 
 function driftBadge(drift) {
-  if (!drift || drift.score === null) return '<span class="badge">brak w AI Stupid Level</span>';
+  if (!drift || drift.score === null) return '<span class="badge">not on AI Stupid Level</span>';
   const arrow = drift.trend === "up" ? "↑" : drift.trend === "down" ? "↓" : "→";
   const cls = drift.trend === "down" || drift.status === "critical" ? "bad" : drift.status === "warning" ? "warn" : "ok";
-  return `<span class="badge ${cls}">dryf ${Math.round(drift.score)} ${arrow}</span>`;
+  return `<span class="badge ${cls}">drift ${Math.round(drift.score)} ${arrow}</span>`;
 }
 
 function copilotBadge(copilot) {
-  if (!copilot) return '<span class="badge warn">poza Copilotem</span>';
-  return `<span class="badge ok">Copilot · $${copilot.input_usd}/$${copilot.output_usd} za 1M</span>`;
+  if (!copilot) return '<span class="badge warn">not in Copilot</span>';
+  return `<span class="badge ok">Copilot · $${copilot.input_usd}/$${copilot.output_usd} per 1M</span>`;
 }
 
 function renderVerdicts(view) {
@@ -91,21 +91,21 @@ function renderVerdicts(view) {
         <div class="metrics">
           <div class="metric"><b>${pct(pick.score)}</b><span>CursorBench</span></div>
           <div class="metric"><b>${usd(pick.cost_usd)}</b><span>$ / zadanie</span></div>
-          <div class="metric"><b>${pick.steps}</b><span>kroków</span></div>
+          <div class="metric"><b>${pick.steps}</b><span>steps</span></div>
         </div>
         <p class="why">${escapeHtml(verdict.why)}</p>
         ${verdict.overlap_note ? `<p class="note">${escapeHtml(verdict.overlap_note)}</p>` : ""}
-        ${verdict.relaxed ? '<p class="note">Próg rozluźniony — po odfiltrowaniu modeli nic nie mieściło się w limicie.</p>' : ""}
+        ${verdict.relaxed ? '<p class="note">Threshold relaxed — nothing fitted the limit once the hidden models were filtered out.</p>' : ""}
         <div class="badges">${driftBadge(pick.drift)}${copilotBadge(pick.copilot)}
-          <span class="badge">${num(pick.tokens)} tokenów</span></div>
+          <span class="badge">${num(pick.tokens)} tokens</span></div>
       </article>`)
     );
   });
   const thresholds = view.thresholds;
   $("#verdict-sub").textContent =
-    `Architekt: najtaniej w promieniu ${thresholds.architect_score_slack_pp} pp od czołówki. ` +
-    `Worker: najlepszy wynik do $${thresholds.worker_max_cost_usd.toFixed(2)} za zadanie. ` +
-    `Zwiadowca: najlepszy wynik do $${thresholds.scout_max_cost_usd.toFixed(2)}.`;
+    `Architect: the cheapest model within ${thresholds.architect_score_slack_pp} pp of the top score. ` +
+    `Worker: the best score under $${thresholds.worker_max_cost_usd.toFixed(2)} per task. ` +
+    `Scout: the best score under $${thresholds.scout_max_cost_usd.toFixed(2)}.`;
 }
 
 /* ---------- gap tracks: the fit-axis device ---------- */
@@ -117,10 +117,10 @@ function renderGaps(gaps) {
     const colour = gap.verdict === "bargain" ? "#38e1c4" : gap.verdict === "steep" ? "#7c5cff" : "#8b97a8";
     const message =
       gap.verdict === "bargain"
-        ? "Dopłata jest symboliczna wobec przyrostu jakości — bierz droższego nawet do prostych zadań."
+        ? "The surcharge is token next to the quality gained — take the dearer one, even for simple work."
         : gap.verdict === "steep"
-        ? "Płacisz krotnie więcej za ułamek jakości — eskaluj tylko wtedy, gdy tańszy realnie polegnie."
-        : "Uczciwa wymiana: dopłata mniej więcej odpowiada przyrostowi jakości.";
+        ? "You pay several times more for a fraction of the quality — escalate only when the cheaper one actually fails."
+        : "A fair trade: the surcharge roughly matches the quality gained.";
     box.append(
       tag(`<div class="gap">
         <h3>${escapeHtml(gap.from)} → ${escapeHtml(gap.to)}</h3>
@@ -133,7 +133,7 @@ function renderGaps(gaps) {
           <text x="376" y="58" fill="#e8ecf1" font-size="12" font-family="ui-monospace,monospace" text-anchor="end">${escapeHtml(gap.to_label)}</text>
           <text x="200" y="18" fill="${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pp · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
         </svg>
-        <p class="verdict-line"><b class="mono" style="color:${colour}">${usd(gap.usd_per_pp)} za punkt</b> — ${escapeHtml(message)}</p>
+        <p class="verdict-line"><b class="mono" style="color:${colour}">${usd(gap.usd_per_pp)} per point</b> — ${escapeHtml(message)}</p>
       </div>`)
     );
   });
@@ -151,7 +151,7 @@ function renderTasks(tasks) {
         <td>${escapeHtml(task.label)}<br><span class="dim" style="font-size:.82rem">${escapeHtml(task.note)}</span></td>
         <td><span class="tier-chip ${task.accent}">${escapeHtml(task.tier_name)}</span></td>
         <td class="pick-cell">${escapeHtml(name)}${effort ? `<em>${escapeHtml(effort)}</em>` : ""}
-            ${task.pick_in_copilot ? "" : '<br><span class="dim" style="font-size:.75rem">poza Copilotem</span>'}</td>
+            ${task.pick_in_copilot ? "" : '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>'}</td>
         <td class="num">${pct(task.pick_score)}</td>
         <td class="num">${usd(task.pick_cost_usd)}</td>
       </tr>`)
@@ -196,7 +196,7 @@ function renderScatter(view) {
     parts.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#222a3d" stroke-width="1"/>`);
     parts.push(`<text x="${pad.l - 12}" y="${y + 4}" fill="#8b97a8" font-size="12" text-anchor="end" font-family="ui-monospace,monospace">${score}%</text>`);
   }
-  parts.push(`<text x="${W / 2}" y="${H - 8}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.6">ŚREDNI KOSZT ZADANIA</text>`);
+  parts.push(`<text x="${W / 2}" y="${H - 8}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.6">AVERAGE COST PER TASK</text>`);
 
   const frontier = view.ladder.filter((rung) => rung.cost_usd > 0);
   if (frontier.length > 1) {
@@ -211,7 +211,7 @@ function renderScatter(view) {
     parts.push(
       `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius}" fill="${fill}" ${
         role ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
-      }><title>${escapeHtml(point.label)} — ${pct(point.score)}, ${usd(point.cost_usd)}, ${point.steps} kroków</title></circle>`
+      }><title>${escapeHtml(point.label)} — ${pct(point.score)}, ${usd(point.cost_usd)}, ${point.steps} steps</title></circle>`
     );
     if (role) {
       const x = sx(point.cost_usd);
@@ -236,7 +236,7 @@ function renderLadder(ladder) {
       box.append(
         tag(`<div class="rung fair">
           <div><span class="headline">${escapeHtml(rung.label)}</span>
-            <div class="step">punkt startowy — najtaniej, jak się da</div></div>
+            <div class="step">starting point — as cheap as it gets</div></div>
           <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
         </div>`)
       );
@@ -244,14 +244,14 @@ function renderLadder(ladder) {
     }
     const message =
       rung.verdict === "bargain"
-        ? "grosze za realny skok jakości"
+        ? "pennies for a real jump in quality"
         : rung.verdict === "steep"
-        ? "drogo za mało — tylko gdy naprawdę potrzebne"
-        : "uczciwa wymiana";
+        ? "expensive for very little — only when it truly matters"
+        : "a fair trade";
     box.append(
       tag(`<div class="rung ${rung.verdict}">
         <div><span class="headline">${escapeHtml(rung.label)}</span>
-          <div class="step">z ${escapeHtml(rung.from_label)}: +${rung.delta_score_pp} pp za +${usd(rung.delta_cost_usd)} → <b>${usd(rung.usd_per_pp)}/pp</b> — ${message}</div></div>
+          <div class="step">from ${escapeHtml(rung.from_label)}: +${rung.delta_score_pp} pp for +${usd(rung.delta_cost_usd)} → <b>${usd(rung.usd_per_pp)}/pp</b> — ${message}</div></div>
         <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
       </div>`)
     );
@@ -261,7 +261,7 @@ function renderLadder(ladder) {
 /* ---------- drift ---------- */
 
 function sparkline(points, delta) {
-  if (!points || points.length < 2) return '<span class="dim mono" style="font-size:.75rem">brak historii</span>';
+  if (!points || points.length < 2) return '<span class="dim mono" style="font-size:.75rem">no history yet</span>';
   const values = points.map((p) => p[1]);
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -290,7 +290,7 @@ function renderDrift(drift) {
   const body = $("#drift tbody");
   body.innerHTML = "";
   drift.forEach((row) => {
-    const arrow = row.trend === "up" ? "↑ rośnie" : row.trend === "down" ? "↓ spada" : "→ stabilny";
+    const arrow = row.trend === "up" ? "↑ rising" : row.trend === "down" ? "↓ falling" : "→ steady";
     const cls = row.trend === "down" ? "violet" : row.trend === "up" ? "cyan" : "dim";
     const delta =
       row.delta_7d === null || row.delta_7d === undefined
@@ -299,7 +299,7 @@ function renderDrift(drift) {
     const deltaCls = row.delta_7d < 0 ? "violet" : row.delta_7d > 0 ? "cyan" : "dim";
     body.append(
       tag(`<tr>
-        <td>${escapeHtml(row.label)} ${row.stale ? '<span class="dim mono" style="font-size:.68rem">· nieodświeżany</span>' : ""}</td>
+        <td>${escapeHtml(row.label)} ${row.stale ? '<span class="dim mono" style="font-size:.68rem">· not refreshed</span>' : ""}</td>
         <td class="num"><b>${row.score === null ? "—" : Math.round(row.score)}</b></td>
         <td>${sparkline(row.points, row.delta_7d)}</td>
         <td class="num ${deltaCls}">${delta}</td>
@@ -355,7 +355,7 @@ function renderCopilot(view) {
         <td class="num">${usd(row.input)}</td>
         <td class="num dim">${usd(row.cached)}</td>
         <td class="num">${usd(row.output)}</td>
-        <td class="num">${row.score === null ? '<span class="dim">brak testu</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
+        <td class="num">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
       </tr>`)
     );
   });
@@ -368,17 +368,18 @@ function renderMethod(view) {
   const thresholds = view.thresholds;
   const hidden = (view.hidden_by_config || []).join(", ");
   method.innerHTML = `
-    <div>Koszt, wynik, tokeny i kroki pochodzą z CursorBench ${escapeHtml(view.benchmark_version || "")} —
-      zawsze dla podanego effortu. Dryf pochodzi z AI Stupid Level i działa jak weto: model,
-      który spada, przegrywa z porównywalnym modelem, który stoi.</div>
-    <div>Progi: architekt ≤ ${thresholds.architect_score_slack_pp} pp od najlepszego wyniku (najtańszy z tej grupy),
-      worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)}/zadanie, zwiadowca ≤ $${thresholds.scout_max_cost_usd.toFixed(2)}/zadanie.
-      Dopłata poniżej $${thresholds.bargain_usd_per_pp.toFixed(2)} za punkt to okazja, powyżej $${thresholds.steep_usd_per_pp.toFixed(2)} to przepłacanie.</div>
-    <div>Ukryte w domyślnym widoku: ${escapeHtml(hidden || "nic")}. Dane o nich i tak są zbierane i archiwizowane.</div>`;
+    <div>Cost, score, tokens and steps come from CursorBench ${escapeHtml(view.benchmark_version || "")} —
+      always for the effort level named on the card. Drift comes from AI Stupid Level and acts as a
+      veto rather than another number in an average: a model on the way down loses to a comparable
+      model that is holding steady.</div>
+    <div>Thresholds: architect ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
+      worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.
+      Under $${thresholds.bargain_usd_per_pp.toFixed(2)} per point is a bargain, over $${thresholds.steep_usd_per_pp.toFixed(2)} is overpaying.</div>
+    <div>Hidden from the default view: ${escapeHtml(hidden || "nothing")}. They are still collected and archived.</div>`;
 
   const archive = view.archive;
   $("#archive").innerHTML = `<p class="mono" style="font-size:.75rem;letter-spacing:.1em">
-      ARCHIWUM: ${archive.snapshots} MIGAWEK · ${num(archive.observations)} POMIARÓW · OD ${escapeHtml(
+      ARCHIVE: ${archive.snapshots} SNAPSHOTS · ${num(archive.observations)} READINGS · SINCE ${escapeHtml(
     (archive.since || "").slice(0, 16).replace("T", " ")
   )} · ${(archive.db_bytes / 1024).toFixed(0)} KB</p>`;
 }
@@ -390,7 +391,7 @@ async function load() {
   const view = await response.json();
   state.view = view;
   if (!view.ready) {
-    $("#verdict-sub").textContent = "Zbieram dane ze źródeł — odśwież za chwilę.";
+    $("#verdict-sub").textContent = "Collecting from the sources — refresh in a moment.";
   }
   renderFreshness(view.sources);
   renderVerdicts(view);
@@ -406,15 +407,15 @@ async function load() {
 $("#toggle-all").addEventListener("click", (event) => {
   state.showAll = !state.showAll;
   event.currentTarget.setAttribute("aria-pressed", String(state.showAll));
-  event.currentTarget.textContent = state.showAll ? "Ukryj odfiltrowane" : "Pokaż ukryte modele";
+  event.currentTarget.textContent = state.showAll ? "Hide filtered models" : "Show hidden models";
   load();
 });
 
 $("#refresh").addEventListener("click", async (event) => {
-  event.currentTarget.textContent = "Odświeżam…";
+  event.currentTarget.textContent = "Refreshing…";
   await fetch("/api/refresh", { method: "POST" });
   await load();
-  event.currentTarget.textContent = "Odśwież";
+  event.currentTarget.textContent = "Refresh";
 });
 
 load();

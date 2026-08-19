@@ -78,7 +78,7 @@ def test_drift_veto_prefers_a_stable_model():
     worker = view["verdicts"]["worker"]
     assert worker["pick"]["key"] == "steady"
     assert worker["replaced"]["key"] == "falling"
-    assert "dryfuje" in worker["why"]
+    assert "drifting down" in worker["why"]
 
 
 def test_overlapping_tiers_are_named_once():
@@ -89,7 +89,7 @@ def test_overlapping_tiers_are_named_once():
     ]
     view = recommend.build(cb, [], [], Settings(), [])
     assert view["verdicts"]["worker"]["overlap_with"] == "architect"
-    assert "pokrywają" in view["verdicts"]["worker"]["overlap_note"]
+    assert "overlap" in view["verdicts"]["worker"]["overlap_note"]
 
 
 def test_tasks_resolve_to_a_named_model():

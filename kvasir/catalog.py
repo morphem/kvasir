@@ -4,7 +4,9 @@ Three tiers, and a list of the jobs that actually land on this desk mapped onto 
 tiers are roles, not model names: which model fills a role is decided from live data in
 recommend.py and changes as the benchmarks move.
 
-UI strings are Polish by house rule; keys and code stay English.
+The UI is English here by the owner's decision — the page is shared with colleagues and
+every source it quotes is English — which is a documented exception to the ecosystem's
+"UI in Polish" rule. See CLAUDE.md.
 """
 
 from __future__ import annotations
@@ -12,66 +14,67 @@ from __future__ import annotations
 TIERS = [
     {
         "id": "architect",
-        "name": "Architekt",
-        "role": "Planuje i rozkłada zadanie",
+        "name": "Architect",
+        "role": "Plans and decomposes",
         "description": (
-            "Orkiestrator. Bierze duży, nieokreślony problem, ustala zakres, tworzy szablon "
-            "i definiuje zadania dla pozostałych. Płacisz za myślenie, nie za klepanie."
+            "The orchestrator. Takes a large, under-specified problem, sets the scope, builds "
+            "the outline and defines the tasks for everyone else. You are paying for thinking, "
+            "not for typing."
         ),
         "accent": "violet",
     },
     {
         "id": "worker",
         "name": "Worker",
-        "role": "Robi typową robotę",
+        "role": "Does the ordinary job",
         "description": (
-            "Domyślny agent. Dostaje konkretne zadanie albo pytanie (również od biznesu) "
-            "i je wykonuje. Szybszy od architekta, mniej twórczy — mocny tam, gdzie jest "
-            "dokumentacja i wzorzec do naśladowania."
+            "The default agent. Takes a defined task or a question — including one from the "
+            "business — and answers it. Faster than the architect and less inventive: strongest "
+            "where documentation exists and a pattern can be followed."
         ),
         "accent": "cyan",
     },
     {
         "id": "scout",
-        "name": "Zwiadowca",
-        "role": "Tanie, proste, powtarzalne",
+        "name": "Scout",
+        "role": "Cheap, simple, repetitive",
         "description": (
-            "Najtańszy agent do rzeczy mechanicznych: przeniesienie plików, zmiana nazw, "
-            "wywołanie narzędzia przygotowanego przez innego agenta, szybkie sprawdzenie."
+            "The cheapest agent, for mechanical work: moving files, renaming things, calling a "
+            "tool another agent prepared, checking something quickly."
         ),
         "accent": "dim",
     },
 ]
 
 TASKS = [
-    {"id": "plan", "tier": "architect", "label": "Plan dużego zadania, architektura, rozbicie na kroki",
-     "note": "Tu błąd kosztuje najwięcej — zły plan psuje całą resztę pracy."},
-    {"id": "big-refactor", "tier": "architect", "label": "Refaktor przez wiele plików i modułów",
-     "note": "Wymaga trzymania całego kontekstu naraz; worker gubi się w zależnościach."},
-    {"id": "hard-bug", "tier": "architect", "label": "Trudny bug — nie wiadomo, gdzie leży",
-     "note": "Cross-domain. Model musi łączyć ślady z warstw, których nikt nie wskazał."},
-    {"id": "greenfield", "tier": "architect", "label": "Nowy moduł od zera, bez wzorca w repo",
-     "note": "Nie ma czego skopiować — potrzebna kreatywność, nie odtwarzanie."},
+    {"id": "plan", "tier": "architect", "label": "Plan a large task: architecture, scope, breakdown",
+     "note": "Where a mistake costs the most — a bad plan wastes every hour spent downstream of it."},
+    {"id": "big-refactor", "tier": "architect", "label": "Refactor across many files and modules",
+     "note": "The whole context has to be held at once; a worker loses the thread between dependencies."},
+    {"id": "hard-bug", "tier": "architect", "label": "Hard bug with no obvious location",
+     "note": "Cross-domain. The model has to connect traces from layers nobody pointed it at."},
+    {"id": "greenfield", "tier": "architect", "label": "New module from scratch, no pattern in the repo",
+     "note": "Nothing to copy — this needs invention rather than recall."},
 
-    {"id": "feature", "tier": "worker", "label": "Feature według istniejącego wzorca w repo",
-     "note": "Jest się czym podeprzeć: worker odtworzy wzorzec taniej i szybciej."},
-    {"id": "business-q", "tier": "worker", "label": "Pytanie od biznesu: jak to działa, czy da się",
-     "note": "Czytanie kodu i dokumentacji plus zwięzła odpowiedź."},
-    {"id": "review", "tier": "worker", "label": "Code review, szukanie błędów w PR",
-     "note": "Zakres znany, wynik weryfikowalny — nie ma za co dopłacać."},
-    {"id": "tests", "tier": "worker", "label": "Testy do istniejącego kodu",
-     "note": "Praca odtwórcza z jasnym kryterium sukcesu."},
-    {"id": "integration", "tier": "worker", "label": "Integracja z API według dokumentacji",
-     "note": "Dokumentacja jest w kontekście — to gra dla workera."},
+    {"id": "feature", "tier": "worker", "label": "Feature that follows an existing pattern",
+     "note": "There is something to lean on, so the worker reproduces it faster and cheaper."},
+    {"id": "business-q", "tier": "worker", "label": "Question from the business: how does this work, can we do it",
+     "note": "Read the code and the docs, then answer in two sentences."},
+    {"id": "review", "tier": "worker", "label": "Code review, finding bugs in a pull request",
+     "note": "Bounded scope and a checkable result — nothing here earns a premium."},
+    {"id": "tests", "tier": "worker", "label": "Tests for code that already exists",
+     "note": "Recall work with an unambiguous success criterion."},
+    {"id": "integration", "tier": "worker", "label": "Integrate an API from its documentation",
+     "note": "The documentation is in the context window; this is the worker's game."},
 
-    {"id": "mech-refactor", "tier": "scout", "label": "Mechaniczny refaktor: nazwy, przenoszenie plików",
-     "note": "Zero kreatywności, dużo edycji. Płać za tokeny, nie za rozum."},
-    {"id": "tool-call", "tier": "scout", "label": "Wywołanie narzędzia przygotowanego przez innego agenta",
-     "note": "Narzędzie już myśli za agenta — wystarczy, żeby trafił w argumenty."},
-    {"id": "chores", "tier": "scout", "label": "Commit message, changelog, opis PR",
-     "note": "Krótkie, schematyczne, sprawdzane wzrokiem w sekundę."},
-    {"id": "locate", "tier": "scout", "label": "Szybkie „gdzie to jest w kodzie”",
-     "note": "Wyszukiwanie, nie rozumowanie."},
+    {"id": "mech-refactor", "tier": "scout", "label": "Mechanical refactor: renames, moving files",
+     "note": "Zero creativity, many edits. Pay for tokens, not for judgement."},
+    {"id": "tool-call", "tier": "scout", "label": "Call a tool another agent prepared",
+     "note": "The tool already does the thinking — the model only has to hit the arguments."},
+    {"id": "chores", "tier": "scout", "label": "Commit message, changelog, pull request description",
+     "note": "Short, formulaic, and verified at a glance."},
+    {"id": "locate", "tier": "scout", "label": "Quick “where is this in the code”",
+     "note": "Searching, not reasoning."},
 ]
 
 TIER_BY_ID = {tier["id"]: tier for tier in TIERS}

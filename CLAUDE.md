@@ -6,8 +6,11 @@ effort level), **AI Stupid Level** (drift: is this model quietly getting worse) 
 Copilot's models-and-pricing docs** (what we can actually pick at work, and what it bills) — into
 three roles: architect, worker, scout. Python + FastAPI + SQLite in a single container on Unraid,
 served at `kvasir.blinkneuron.eu`. State is a SQLite archive under `/data`; there is no other
-persistence and no external database. Code, comments, docs and commits in English; the UI and
-conversation with the owner in Polish.
+persistence and no external database. **Everything shipped is English — code, comments, docs,
+commits and the page itself.** This is a deliberate, owner-approved exception to the ecosystem
+rule that UI copy is Polish (`xreal/CONSTITUTION.md` §1): the page is shared with colleagues and
+every source it quotes is English, so a Polish shell around English data would only add a
+translation layer to maintain. Conversation with the owner stays Polish.
 
 Infra conventions (Unraid, appdata layout, SWAG, deploy doctrine) are owned by
 `homelab/CLAUDE.md` and `xreal/CONSTITUTION.md`. This repo does not restate them.

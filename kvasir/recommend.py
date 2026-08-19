@@ -180,9 +180,9 @@ def pick_tiers(candidates: list[dict], cfg) -> dict:
             same_effort = verdicts[a]["pick"]["effort"] == verdicts[b]["pick"]["effort"]
             verdicts[b]["overlap_with"] = a
             verdicts[b]["overlap_note"] = (
-                f"Ten sam model co {TIER_BY_ID[a]['name']}"
-                + (" i ten sam effort — zakresy się pokrywają, nie ma czego dzielić."
-                   if same_effort else " — różni się tylko effortem.")
+                f"Same model as the {TIER_BY_ID[a]['name'].lower()}"
+                + (" at the same effort — the ranges overlap, there is nothing to split."
+                   if same_effort else " — only the effort differs.")
             )
     return verdicts
 
@@ -191,23 +191,23 @@ def _why(tier_id: str, pick: dict, replaced: dict | None, top_score: float, cfg)
     cost = pick["cost_usd"]
     if tier_id == "architect":
         base = (
-            f"Najtańsze wejście do czołówki: {pick['score']:.1f}% przy ${cost:.2f}/zadanie "
-            f"(najlepszy wynik dziś to {top_score:.1f}%, próg to {cfg.architect_score_slack_pp:.0f} pp)."
+            f"Cheapest way into the top group: {pick['score']:.1f}% at ${cost:.2f} per task "
+            f"(best today is {top_score:.1f}%, cutoff {cfg.architect_score_slack_pp:.0f} pp)."
         )
     elif tier_id == "worker":
         base = (
-            f"Najwyższy wynik, jaki mieści się w ${cfg.worker_max_cost_usd:.2f}/zadanie: "
-            f"{pick['score']:.1f}% za ${cost:.2f}, {pick['steps']} kroków."
+            f"Highest score that fits under ${cfg.worker_max_cost_usd:.2f} per task: "
+            f"{pick['score']:.1f}% for ${cost:.2f}, {pick['steps']} steps."
         )
     else:
         base = (
-            f"Najwyższy wynik poniżej ${cfg.scout_max_cost_usd:.2f}/zadanie: "
-            f"{pick['score']:.1f}% za ${cost:.2f}."
+            f"Highest score under ${cfg.scout_max_cost_usd:.2f} per task: "
+            f"{pick['score']:.1f}% for ${cost:.2f}."
         )
     if replaced:
         base += (
-            f" Zamiast {replaced['label']} — ten model dryfuje w dół w AI Stupid Level, "
-            "więc dziś nie jest wart ryzyka."
+            f" Instead of {replaced['label']} — that one is drifting down on AI Stupid Level, "
+            "so today it is not worth the risk."
         )
     return base
 
@@ -216,7 +216,7 @@ def value_ladder(candidates: list[dict]) -> list[dict]:
     """The cost/quality frontier, rung by rung.
 
     Each step answers one question: how much does the next percentage point cost here.
-    That is where "dopłać grosze, dostań dużo lepszy wynik" becomes visible — and where
+    That is where "pay pennies more, get a much better result" becomes visible — and where
     paying five times more for half a point becomes visible too.
     """
     ordered = sorted(candidates, key=lambda c: (c["cost_uusd"], -c["score"]))

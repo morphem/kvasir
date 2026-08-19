@@ -219,7 +219,7 @@ def drift_series(db_path: str, model_key: str, series: str = "aisl-run", days: i
 
 
 def drift_summary(db_path: str, days: int = 7) -> dict[str, dict]:
-    """First/last score per model in the window — the "wczoraj 80, dziś 67" number."""
+    """First/last score per model in the window — the "80 yesterday, 67 today" number."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
     out: dict[str, dict] = {}
     with connect(db_path) as conn:
