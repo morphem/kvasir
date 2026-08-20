@@ -25,6 +25,10 @@ LOCK = asyncio.Lock()
 DRIFT_SERIES = "aisl-run"
 DASHBOARD_SERIES = "aisl-dashboard"
 
+# The run history is its own job with its own cadence, and it is logged like any other so a
+# silent failure cannot leave the sparklines quietly frozen while the headline number moves.
+BACKFILL_SOURCE = "stupidlevel-history"
+
 
 def client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
@@ -68,14 +72,16 @@ def _store_dashboard_points(rows: list[dict]) -> None:
 async def backfill_drift(http: httpx.AsyncClient, period: str = "7d") -> dict:
     """Pull the published run history for every model we track.
 
-    Idempotent, so it can run on every boot: the primary key drops the points we already
-    have and keeps whatever is new.
+    Idempotent — the primary key drops points we already have — so this can run on every
+    boot and on every interval without duplicating anything.
     """
     from .collectors import stupidlevel
 
+    started = db.now_iso()
     rows, _ = db.latest(settings.db_path, "stupidlevel")
     added = 0
     models = 0
+    failures = 0
     for row in rows:
         model_id = row.get("source_id")
         if not model_id:
@@ -83,13 +89,26 @@ async def backfill_drift(http: httpx.AsyncClient, period: str = "7d") -> dict:
         try:
             points = await stupidlevel.fetch_history(http, model_id, period)
         except Exception as exc:  # noqa: BLE001
+            failures += 1
             log.warning("drift backfill for %s failed: %s", row.get("model_key"), exc)
             continue
         added += db.store_drift_points(settings.db_path, row["model_key"], DRIFT_SERIES, points)
         models += 1
         await asyncio.sleep(0.2)  # be a polite guest on someone else's API
-    log.info("drift backfill: %d models, %d new points", models, added)
-    return {"models": models, "points_added": added}
+
+    ok = models > 0 and failures < models
+    db.log_run(
+        settings.db_path,
+        BACKFILL_SOURCE,
+        started,
+        ok,
+        added > 0,
+        models,
+        None if ok else f"{failures} of {models + failures} models failed",
+        None,
+    )
+    log.info("drift backfill: %d models, %d new points, %d failures", models, added, failures)
+    return {"models": models, "points_added": added, "failures": failures}
 
 
 async def collect_all(sources: list[str] | None = None, with_backfill: bool = False) -> list[dict]:

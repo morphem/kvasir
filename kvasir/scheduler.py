@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from . import db
-from .collect import LOCK, backfill_drift, client, collect_source
+from .collect import BACKFILL_SOURCE, LOCK, backfill_drift, client, collect_source
 from .collectors import MODULES
 from .config import settings
 
@@ -27,6 +27,7 @@ def interval_minutes(source: str) -> int:
         "stupidlevel": settings.interval_stupidlevel,
         "cursorbench": settings.interval_cursorbench,
         "copilot": settings.interval_copilot,
+        BACKFILL_SOURCE: settings.interval_backfill,
     }.get(source, 720)
 
 
@@ -45,19 +46,19 @@ def due(source: str, status: dict) -> bool:
 
 
 async def run_forever() -> None:
-    backfilled_on = None
     while True:
         try:
             status = db.source_status(settings.db_path)
             pending = [source for source in MODULES if due(source, status)]
-            today = datetime.now(timezone.utc).date()
-            if pending or backfilled_on != today:
+            # The run history is due on its own clock, tracked in the same run log, so a
+            # restart neither loses nor repeats it.
+            backfill_due = due(BACKFILL_SOURCE, status)
+            if pending or backfill_due:
                 async with LOCK, client() as http:
                     for source in pending:
                         await collect_source(source, http)
-                    if backfilled_on != today:
+                    if backfill_due:
                         await backfill_drift(http)
-                        backfilled_on = today
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the loop must outlive any single failure

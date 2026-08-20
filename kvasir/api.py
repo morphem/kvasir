@@ -18,7 +18,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 
 from . import db, recommend, scheduler
-from .collect import DASHBOARD_SERIES, DRIFT_SERIES, collect_all
+from .collect import BACKFILL_SOURCE, DASHBOARD_SERIES, DRIFT_SERIES, collect_all
 from .collectors import MODULES, SOURCE_LABELS
 from .config import settings
 from .naming import display_name
@@ -165,6 +165,10 @@ def view(all: bool = Query(False, description="include models hidden by configur
             "sources": _sources_block(),
             "drift": _drift_block(ai_rows),
             "archive": db.archive_stats(settings.db_path),
+            "drift_history": {
+                **(db.source_status(settings.db_path).get(BACKFILL_SOURCE) or {}),
+                "interval_minutes": scheduler.interval_minutes(BACKFILL_SOURCE),
+            },
             "ready": bool(cb_rows and ai_rows and cp_rows),
         }
     )

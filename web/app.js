@@ -438,7 +438,18 @@ function sparkline(points, delta) {
   </svg>`;
 }
 
-function renderDrift(drift) {
+function renderDrift(drift, history) {
+  const note = $("#drift-refreshed");
+  if (note) {
+    const every =
+      history && history.interval_minutes
+        ? `every ${Math.round(history.interval_minutes / 60)} h`
+        : "";
+    note.textContent =
+      history && history.last_run
+        ? ` Run history pulled ${ago(history.last_run)}, ${every}.`
+        : " Run history has not been pulled yet.";
+  }
   const body = $("#drift tbody");
   body.innerHTML = "";
   drift.forEach((row) => {
@@ -562,7 +573,7 @@ function renderAll() {
   renderTasks(view);
   renderScatter(view);
   renderLadder(view.ladder);
-  renderDrift(view.drift);
+  renderDrift(view.drift, view.drift_history);
   renderCopilot(view);
   renderMethod(view);
 }

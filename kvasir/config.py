@@ -49,6 +49,9 @@ class Settings:
     interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 60)
     interval_cursorbench: int = _int("KVASIR_INTERVAL_CURSORBENCH", 720)
     interval_copilot: int = _int("KVASIR_INTERVAL_COPILOT", 720)
+    # AI Stupid Level's published run history, which draws the sparklines. Daily was too
+    # slow: the headline score moves hourly, so the chart beside it was up to a day behind.
+    interval_backfill: int = _int("KVASIR_INTERVAL_BACKFILL", 360)
 
     # Fetch every model the sources publish (the archive keeps everything), but hide
     # these from the default view. The UI has a switch to show them anyway.

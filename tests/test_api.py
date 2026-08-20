@@ -82,3 +82,27 @@ def test_the_page_itself_is_served():
     response = client().get("/")
     assert response.status_code == 200
     assert "Kvasir" in response.text
+
+
+def test_the_run_history_job_has_its_own_clock_and_shows_its_age():
+    """The sparklines froze once because this job ran daily while the score moved hourly."""
+    from kvasir import scheduler
+    from kvasir.collect import BACKFILL_SOURCE
+
+    assert scheduler.interval_minutes(BACKFILL_SOURCE) == settings.interval_backfill
+    assert settings.interval_backfill <= 12 * 60
+
+    api = client()
+    db.log_run(settings.db_path, BACKFILL_SOURCE, db.now_iso(), True, True, 22, None, None)
+    body = api.get("/api/view").json()
+    assert body["drift_history"]["last_run"]
+    assert body["drift_history"]["interval_minutes"] == settings.interval_backfill
+
+
+def test_a_backfill_that_is_overdue_is_scheduled_again():
+    from kvasir import scheduler
+    from kvasir.collect import BACKFILL_SOURCE
+
+    stale = {"last_run": "2026-01-01T00:00:00+00:00"}
+    assert scheduler.due(BACKFILL_SOURCE, {BACKFILL_SOURCE: stale}) is True
+    assert scheduler.due(BACKFILL_SOURCE, {BACKFILL_SOURCE: {"last_run": db.now_iso()}}) is False
