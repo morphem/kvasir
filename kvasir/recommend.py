@@ -13,7 +13,7 @@ quietly getting worse this week should not win on last month's benchmark.
 
 from __future__ import annotations
 
-from . import budget
+from . import budget, db
 from .catalog import TASKS, TIER_BY_ID, TIERS
 from .naming import EFFORT_LABELS, label as model_label, vendor_of
 
@@ -313,6 +313,63 @@ def resolve_tasks(verdicts: dict) -> list[dict]:
             }
         )
     return rows
+
+
+def _decision(payload: dict) -> dict:
+    """The part of a view that is a decision: who won which role, at what price.
+
+    Freshness counters, timestamps and the "why" prose are deliberately left out — they
+    move on every render and would turn the change log into noise. Thresholds and the
+    credit rate are kept, because a config change that moves every pick must stay
+    explainable from the archived record alone.
+    """
+
+    def core(pick: dict | None) -> dict | None:
+        if not pick:
+            return None
+        return {
+            "key": pick["key"],
+            "effort": pick["effort"],
+            "label": pick["label"],
+            "score": pick["score"],
+            "cost_uusd": pick["cost_uusd"],
+        }
+
+    return {
+        "verdicts": {
+            tier_id: {
+                "pick": core(verdict.get("pick")),
+                "replaced": verdict["replaced"]["label"] if verdict.get("replaced") else None,
+                "relaxed": verdict.get("relaxed", False),
+            }
+            for tier_id, verdict in payload["verdicts"].items()
+        },
+        "plans": {
+            tier_id: {role: core(data.get("pick")) for role, data in plan["roles"].items()}
+            for tier_id, plan in payload["plans"].items()
+        },
+        "credit_usd": payload["credit_usd"],
+        "thresholds": payload["thresholds"],
+    }
+
+
+def capture(db_path: str, cfg) -> bool:
+    """Archive the current verdict if it differs from the last one stored.
+
+    Reads only from the archive, so it can run after any collection round without
+    touching the network; dedup means an unchanged reading costs one hash. Returns
+    whether a new decision was written.
+    """
+    cb_rows, _ = db.latest(db_path, "cursorbench")
+    ai_rows, _ = db.latest(db_path, "stupidlevel")
+    cp_rows, cp_meta = db.latest(db_path, "copilot")
+    if not (cb_rows and ai_rows and cp_rows):
+        return False  # an incomplete board has no verdict worth writing down
+    view = build(
+        cb_rows, ai_rows, cp_rows, cfg, cfg.hidden_models, credit_usd=cp_meta.get("credit_usd")
+    )
+    _, changed = db.archive_recommendation(db_path, _decision(view))
+    return changed
 
 
 def build(cb_rows, ai_rows, cp_rows, cfg, hidden: list[str], credit_usd: float | None = None) -> dict:

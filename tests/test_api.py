@@ -106,3 +106,18 @@ def test_a_backfill_that_is_overdue_is_scheduled_again():
     stale = {"last_run": "2026-01-01T00:00:00+00:00"}
     assert scheduler.due(BACKFILL_SOURCE, {BACKFILL_SOURCE: stale}) is True
     assert scheduler.due(BACKFILL_SOURCE, {BACKFILL_SOURCE: {"last_run": db.now_iso()}}) is False
+
+
+def test_recommendations_are_served_from_the_archive():
+    from kvasir import recommend
+
+    api = client()
+    assert api.get("/api/recommendations").json()["points"] == []  # nothing captured yet
+    assert recommend.capture(settings.db_path, settings) is True
+    body = api.get("/api/recommendations").json()
+    assert len(body["points"]) == 1
+    verdicts = body["points"][0]["verdicts"]
+    assert set(verdicts) == {"architect", "worker", "scout"}
+    for verdict in verdicts.values():
+        assert verdict["pick"]["key"]
+        assert verdict["pick"]["effort"]

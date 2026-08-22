@@ -186,6 +186,12 @@ def drift(model_key: str, days: int = Query(14, ge=1, le=365), series: str = DRI
     }
 
 
+@app.get("/api/recommendations")
+def recommendations(days: int = Query(365, ge=1, le=3650)):
+    """Every distinct verdict the page has shown in the window — its own change log."""
+    return {"days": days, "points": db.recommendation_history(settings.db_path, days)}
+
+
 @app.get("/api/history")
 def history(
     source: str,

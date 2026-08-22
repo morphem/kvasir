@@ -13,7 +13,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from . import db
-from .collect import BACKFILL_SOURCE, LOCK, backfill_drift, client, collect_source
+from .collect import (
+    BACKFILL_SOURCE,
+    LOCK,
+    backfill_drift,
+    capture_recommendation,
+    client,
+    collect_source,
+)
 from .collectors import MODULES
 from .config import settings
 
@@ -59,6 +66,9 @@ async def run_forever() -> None:
                         await collect_source(source, http)
                     if backfill_due:
                         await backfill_drift(http)
+                # Fresh data may have moved the verdict, and a drift backfill can flip the
+                # veto on its own; either way the decision goes to the archive.
+                capture_recommendation()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the loop must outlive any single failure

@@ -93,3 +93,34 @@ def test_unchanged_rows_still_refresh_metadata():
     assert db.archive_stats(path)["snapshots"] == 1
     _, meta = db.latest(path, "copilot")
     assert meta["credit_usd"] == 0.01
+
+
+DECISION = {
+    "verdicts": {"worker": {"pick": {"key": "sonnet-5", "effort": "high"}, "replaced": None}},
+    "plans": {},
+    "credit_usd": 0.01,
+    "thresholds": {"worker_max_cost_usd": 2.5},
+}
+
+
+def test_the_verdict_is_archived_once_per_change():
+    path = fresh_db()
+    moved = {"verdicts": {"worker": {"pick": {"key": "opus-5", "effort": "max"}, "replaced": None}},
+             "plans": {}, "credit_usd": 0.01, "thresholds": DECISION["thresholds"]}
+    first, changed_a = db.archive_recommendation(path, DECISION)
+    again, changed_b = db.archive_recommendation(path, dict(DECISION))
+    _, changed_c = db.archive_recommendation(path, moved)
+    assert (changed_a, changed_b, changed_c) == (True, False, True)
+    assert first == again  # the unchanged reading points at the same row
+    history = db.recommendation_history(path, days=1)
+    assert [point["verdicts"]["worker"]["pick"]["key"] for point in history] == [
+        "sonnet-5",
+        "opus-5",
+    ]
+
+
+def test_recommendations_are_counted_in_the_archive_stats():
+    path = fresh_db()
+    db.archive_recommendation(path, DECISION)
+    stats = db.archive_stats(path)
+    assert stats["recommendations"] == 1

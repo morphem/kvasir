@@ -1,10 +1,13 @@
 """The verdict layer: same three sources in, one decision out."""
 
+import os
+import tempfile
+
 from conftest import fixture
 
+from kvasir import db, recommend
 from kvasir.collectors import copilot, cursorbench, stupidlevel
 from kvasir.config import Settings
-from kvasir import recommend
 
 
 def build(hidden=None):
@@ -98,3 +101,41 @@ def test_tasks_resolve_to_a_named_model():
     for task in view["tasks"]:
         assert task["pick_label"]
         assert task["tier"] in {"architect", "worker", "scout"}
+
+
+def seed_archive(path: str) -> None:
+    db.init(path)
+    for module, name in (
+        (cursorbench, "cursorbench.html"),
+        (stupidlevel, "stupidlevel-scores.json"),
+        (copilot, "copilot-models-and-pricing.html"),
+    ):
+        rows, meta = module.parse(fixture(name))
+        db.archive(path, module.SOURCE, rows, meta)
+
+
+def test_capture_archives_the_verdict_once_per_change():
+    """The page's own answer belongs in the archive — but only when the answer moved."""
+    path = os.path.join(tempfile.mkdtemp(prefix="kvasir-rec-"), "kvasir.db")
+    seed_archive(path)
+    cfg = Settings()
+    assert recommend.capture(path, cfg) is True   # the first verdict lands
+    assert recommend.capture(path, cfg) is False  # an unchanged verdict writes nothing
+
+    stored = db.recommendation_history(path, days=1)[0]
+    expected = build(cfg.hidden_models)["verdicts"]  # the capture filters like the default view
+    for tier_id, verdict in stored["verdicts"].items():
+        pick = verdict["pick"]
+        assert pick["key"] == expected[tier_id]["pick"]["key"]
+        assert pick["effort"] == expected[tier_id]["pick"]["effort"]
+        assert pick["score"] == expected[tier_id]["pick"]["score"]
+
+
+def test_capture_refuses_an_incomplete_board():
+    """Half the sources is not a verdict; writing one down would be inventing history."""
+    path = os.path.join(tempfile.mkdtemp(prefix="kvasir-rec-"), "kvasir.db")
+    db.init(path)
+    rows, _ = cursorbench.parse(fixture("cursorbench.html"))
+    db.archive(path, "cursorbench", rows, {})
+    assert recommend.capture(path, Settings()) is False
+    assert db.archive_stats(path)["recommendations"] == 0

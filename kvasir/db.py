@@ -69,6 +69,17 @@ CREATE TABLE IF NOT EXISTS drift_history (
   score       REAL NOT NULL,
   PRIMARY KEY (model_key, series, captured_at)
 ) WITHOUT ROWID;
+
+-- The page's own verdicts. A recommendation is a number the page displayed, so it belongs
+-- in this archive like any other reading; deduplicated by content hash like the sources,
+-- so a quiet week writes nothing and every row is a decision that actually moved.
+CREATE TABLE IF NOT EXISTS recommendation (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  captured_at  TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  payload_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS recommendation_time ON recommendation(captured_at DESC);
 """
 
 
@@ -143,6 +154,43 @@ def archive(db_path: str, source: str, rows: list[dict], meta: dict) -> tuple[in
             ],
         )
         return snapshot_id, True
+
+
+def archive_recommendation(db_path: str, payload: dict) -> tuple[int | None, bool]:
+    """Store the verdict. Only when the decision itself moved.
+
+    Same contract as `archive`: an unchanged reading is not stored again, because the
+    previous row still describes the present — this table is the answer to "what did the
+    page recommend and when", not a diary of how often someone opened it.
+    """
+    digest = payload_hash([payload])
+    with connect(db_path) as conn:
+        previous = conn.execute(
+            "SELECT id, payload_hash FROM recommendation ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if previous and previous["payload_hash"] == digest:
+            return previous["id"], False
+        cursor = conn.execute(
+            "INSERT INTO recommendation(captured_at, payload_hash, payload_json) VALUES (?,?,?)",
+            (now_iso(), digest, json.dumps(payload, default=str)),
+        )
+        return cursor.lastrowid, True
+
+
+def recommendation_history(db_path: str, days: int = 365) -> list[dict]:
+    """Every distinct verdict of the window, oldest first.
+
+    Ordered by id, not by timestamp: two decisions inside one second share a
+    `captured_at`, and the insertion order is the true chronology.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT captured_at, payload_json FROM recommendation
+               WHERE captured_at>=? ORDER BY id""",
+            (since,),
+        ).fetchall()
+    return [{"captured_at": row["captured_at"], **json.loads(row["payload_json"])} for row in rows]
 
 
 def log_run(
@@ -310,11 +358,15 @@ def archive_stats(db_path: str) -> dict:
     with connect(db_path) as conn:
         snapshots = conn.execute("SELECT COUNT(*) AS n FROM snapshot").fetchone()["n"]
         observations = conn.execute("SELECT COUNT(*) AS n FROM observation").fetchone()["n"]
+        recommendations = conn.execute(
+            "SELECT COUNT(*) AS n FROM recommendation"
+        ).fetchone()["n"]
         first = conn.execute("SELECT MIN(captured_at) AS t FROM snapshot").fetchone()["t"]
     size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
     return {
         "snapshots": snapshots,
         "observations": observations,
+        "recommendations": recommendations,
         "since": first,
         "db_bytes": size,
     }

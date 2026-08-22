@@ -12,7 +12,7 @@ import logging
 
 import httpx
 
-from . import db
+from . import db, recommend
 from .collectors import MODULES
 from .config import settings
 
@@ -36,6 +36,23 @@ def client() -> httpx.AsyncClient:
         headers={"User-Agent": settings.user_agent, "Accept-Language": "en"},
         follow_redirects=True,
     )
+
+
+def capture_recommendation() -> bool:
+    """Archive the verdict the page would show right now — but only if it moved.
+
+    A recommendation is a number the page displays, so it goes into the archive like any
+    other reading; without it, "what did Kvasir say last Tuesday" has no answer. Runs off
+    the archive alone, so it never adds a request to anyone else's site.
+    """
+    try:
+        changed = recommend.capture(settings.db_path, settings)
+        if changed:
+            log.info("recommendation archived: the verdict moved")
+        return changed
+    except Exception:  # noqa: BLE001 - a failed capture must not fail the collection round
+        log.exception("recommendation capture failed")
+        return False
 
 
 async def collect_source(source: str, http: httpx.AsyncClient) -> dict:
@@ -118,4 +135,5 @@ async def collect_all(sources: list[str] | None = None, with_backfill: bool = Fa
             results.append(await collect_source(source, http))
         if with_backfill and any(r["source"] == "stupidlevel" and r["ok"] for r in results):
             await backfill_drift(http)
+        capture_recommendation()
         return results
