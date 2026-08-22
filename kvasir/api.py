@@ -18,7 +18,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 
 from . import db, recommend, scheduler
-from .collect import BACKFILL_SOURCE, DASHBOARD_SERIES, DRIFT_SERIES, collect_all
+from .collect import (
+    BACKFILL_SOURCE,
+    DASHBOARD_SERIES,
+    DRIFT_SERIES,
+    capture_recommendation,
+    collect_all,
+)
 from .collectors import MODULES, SOURCE_LABELS
 from .config import settings
 from .naming import display_name
@@ -52,6 +58,9 @@ async def lifespan(app: FastAPI):
         missing = [s for s in MODULES if not db.latest(settings.db_path, s)[0]]
         if missing:
             await collect_all(missing)
+        # The verdict log must not wait for a poll either: after a restart the page already
+        # has an answer, so it goes to the archive now. Dedup makes a no-op free.
+        capture_recommendation()
 
     app.state.tasks = (
         [asyncio.create_task(bootstrap()), asyncio.create_task(scheduler.run_forever())]
