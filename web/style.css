@@ -226,6 +226,34 @@ svg { display: block; width: 100%; height: auto; overflow: visible; }
 /* Clickable dots on the scatter get a generous invisible hit target. */
 #scatter circle.hit { cursor: pointer; }
 
+/* ---- family variant lines ---- */
+.family-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+.family-chip {
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 0.32rem 0.7rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.family-chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.family-chip:hover:not([disabled]) { border-color: var(--dim); color: var(--text); }
+.family-chip[disabled] { opacity: 0.35; cursor: default; }
+.family-chip b { font-weight: 400; }
+
 /* ---- controls ---- */
 .controls { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
 button.toggle {

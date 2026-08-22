@@ -3,7 +3,24 @@
    parses in a blink, and the SVG here is simpler than the config a chart library would need. */
 
 const TIER_STORAGE_KEY = "kvasir.tier";
-const state = { view: null, showAll: false, tier: null, selected: null, everyVariant: false };
+const state = {
+  view: null,
+  showAll: false,
+  tier: null,
+  selected: null,
+  everyVariant: false,
+  families: [], // model keys with their variant line drawn on the scatter, in activation order
+};
+
+/* Family line colours, in activation order. The frontier stays dashed grey-cyan, so even
+   the first hue reads as a different kind of line; three is where distinct hues run out. */
+const FAMILY_HUES = ["#38e1c4", "#7c5cff", "#f5b544"];
+const MAX_FAMILIES = FAMILY_HUES.length;
+
+function familyHue(key) {
+  const index = state.families.indexOf(key);
+  return index === -1 ? null : FAMILY_HUES[index];
+}
 
 /* The tier is a view setting, not a user account: it lives in localStorage, survives every
    reload and deploy, and falls back to the tier the server nominates. */
@@ -57,6 +74,74 @@ function selectVariant(id) {
 
 function toggleVariant(id) {
   selectVariant(state.selected === id ? null : id);
+}
+
+/* ---------- family lines: one model's effort ladder drawn through its dots ---------- */
+
+function familyName(candidates) {
+  return candidates[0].label.split(" · ")[0];
+}
+
+/* Families worth a line: two or more priced variants. Alphabetical, so the list never
+   reshuffles when scores move. */
+function families(view) {
+  const groups = new Map();
+  view.candidates
+    .filter((c) => c.cost_usd > 0)
+    .forEach((c) => {
+      if (!groups.has(c.key)) groups.set(c.key, []);
+      groups.get(c.key).push(c);
+    });
+  return [...groups.values()]
+    .filter((members) => members.length >= 2)
+    .map((members) => ({
+      key: members[0].key,
+      name: familyName(members),
+      variants: members.sort((a, b) => (a.cost_uusd ?? 0) - (b.cost_uusd ?? 0)),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function toggleFamily(key) {
+  const index = state.families.indexOf(key);
+  if (index !== -1) {
+    state.families.splice(index, 1);
+  } else if (state.families.length < MAX_FAMILIES) {
+    state.families.push(key);
+  }
+  renderFamilyPicker(state.view);
+  renderScatter(state.view);
+}
+
+function renderFamilyPicker(view) {
+  const box = $("#family-picker");
+  if (!box || !view) return;
+  const all = families(view);
+  if (!all.length) {
+    box.innerHTML = "";
+    box.hidden = true;
+    return;
+  }
+  const full = state.families.length >= MAX_FAMILIES;
+  box.innerHTML =
+    `<span class="eyebrow" style="align-self:center">Variant lines</span>` +
+    all
+      .map((family) => {
+        const active = state.families.includes(family.key);
+        const blocked = !active && full;
+        const hue = familyHue(family.key);
+        return `<button class="family-chip" data-key="${escapeHtml(family.key)}"
+            aria-pressed="${active}" ${blocked ? "disabled" : ""}
+            ${active && hue ? `style="border-color:${hue};color:${hue}"` : ""}>
+          <i style="background:${hue || "#3a4257"}"></i>${escapeHtml(family.name)}
+          <b class="dim" style="font-weight:400">${family.variants.length}</b>
+        </button>`;
+      })
+      .join("");
+  box.hidden = false;
+  box.querySelectorAll(".family-chip:not([disabled])").forEach((chip) => {
+    chip.addEventListener("click", () => toggleFamily(chip.getAttribute("data-key")));
+  });
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -387,15 +472,27 @@ function renderScatter(view) {
     parts.push(`<polyline points="${path}" fill="none" stroke="#38e1c4" stroke-width="1.5" stroke-dasharray="5 6" opacity=".55"/>`);
   }
 
+  /* Family variant ladders: one solid line per activated model, cheapest effort first.
+     Drawn under the dots so the points stay the primary mark. */
+  families(view).forEach((family) => {
+    const hue = familyHue(family.key);
+    if (!hue) return;
+    const path = family.variants.map((v) => `${sx(v.cost_usd)},${sy(v.score)}`).join(" ");
+    parts.push(`<polyline points="${path}" fill="none" stroke="${hue}" stroke-width="2" opacity=".85"/>`);
+  });
+
   points.forEach((point) => {
     const id = `${point.key}|${point.effort}`;
     const role = picks[id];
-    const fill = role ? colour[role] : "#3a4257";
-    const radius = role ? 7 : 4.5;
+    const hue = familyHue(point.key);
+    /* An active family claims its dots' colour — the exploratory overlay wins over the
+       role tint while it is on, and gives it back the moment the line is switched off. */
+    const fill = hue || (role ? colour[role] : "#3a4257");
+    const radius = hue ? (role ? 7 : 6) : role ? 7 : 4.5;
     const selected = state.selected === id;
     parts.push(
       `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius}" fill="${fill}" ${
-        role ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
+        role || hue ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
       }><title>${escapeHtml(point.label)} — ${pct(point.score)}, ${usd(point.cost_usd)}, ${point.steps} steps</title></circle>`
     );
     if (selected) {
@@ -404,7 +501,16 @@ function renderScatter(view) {
            stroke="#e8ecf1" stroke-width="1.8" pointer-events="none"/>`
       );
     }
-    if (role) {
+    if (hue) {
+      /* Name the step, not the model: the line itself says whose ladder this is. */
+      const x = sx(point.cost_usd);
+      const anchor = x > W - 160 ? "end" : "start";
+      const dx = anchor === "end" ? -10 : 10;
+      parts.push(
+        `<text x="${x + dx}" y="${sy(point.score) - 8}" fill="${hue}" font-size="12" text-anchor="${anchor}" font-family="ui-monospace,monospace">${escapeHtml(point.effort_label)}</text>`
+      );
+    }
+    if (role && !hue) {
       const x = sx(point.cost_usd);
       const anchor = x > W - 200 ? "end" : "start";
       const dx = anchor === "end" ? -12 : 12;
@@ -748,6 +854,7 @@ function renderAll() {
   renderGaps((current && current.gaps) || view.gaps);
   renderTasks(view);
   renderScatter(view);
+  renderFamilyPicker(view);
   renderLadder(view);
   /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
   renderChartDetail();
