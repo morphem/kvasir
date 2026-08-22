@@ -109,21 +109,30 @@
   </section>
 
   <section>
-    <div class="eyebrow">Cost vs quality</div>
-    <h2>Where the value sits</h2>
-    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Every dot is a model at one effort level: average cost per task across (log scale), CursorBench
-      score up. The line joins the models nothing else beats on price and score at the same time.
-    </p>
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Cost vs quality</div>
+        <h2>Where the value sits</h2>
+        <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
+          Every dot is a model at one effort level: average cost per task across (log scale), CursorBench
+          score up. The line joins the models nothing else beats on price and score at the same time.
+          Click any dot or rung to see that variant up close — and every effort level it comes in.
+        </p>
+      </div>
+      <div class="controls">
+        <button class="toggle" id="toggle-ladder" aria-pressed="false">Show every variant</button>
+      </div>
+    </div>
     <div class="chart-box">
       <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Cost against score"></svg>
       <div class="legend">
         <span><i style="background:#7c5cff"></i> Architect</span>
         <span><i style="background:#38e1c4"></i> Worker</span>
         <span><i style="background:#8b97a8"></i> Scout</span>
-        <span><i style="background:#3a4257"></i> everything else</span>
+        <span><i style="background:#3a4257"></i> everything else — click any dot</span>
       </div>
     </div>
+    <div class="chart-detail" id="chart-detail" hidden></div>
     <div class="ladder" id="ladder"></div>
   </section>
 

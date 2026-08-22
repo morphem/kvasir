@@ -185,13 +185,46 @@ svg { display: block; width: 100%; height: auto; overflow: visible; }
 /* ---- ladder ---- */
 .ladder { margin-top: 1.2rem; display: flex; flex-direction: column; gap: 0.35rem; }
 .rung { display: grid; grid-template-columns: 1fr auto; gap: 0.6rem 1rem; align-items: center;
-  background: var(--raise); border: 1px solid var(--edge); border-left-width: 3px; border-radius: 10px; padding: 0.6rem 0.9rem; }
+  background: var(--raise); border: 1px solid var(--edge); border-left-width: 3px; border-radius: 10px; padding: 0.6rem 0.9rem;
+  width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
 .rung.bargain { border-left-color: var(--cyan); }
 .rung.fair { border-left-color: var(--edge); }
 .rung.steep { border-left-color: var(--violet); }
+/* A dominated variant keeps the shape but loses the colour — and says what beats it. */
+.rung.off { opacity: 0.62; }
+.rung.off:hover { opacity: 1; }
+.rung:hover { border-color: var(--dim); }
+.rung.here { border-color: var(--text); }
 .rung .step { font-size: 0.82rem; color: var(--dim); }
 .rung .headline { font-weight: 600; }
 .rung .price { font-family: var(--mono); white-space: nowrap; }
+
+/* ---- variant detail panel ---- */
+.chart-detail {
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  border-top: 2px solid var(--cyan);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.1rem;
+  margin-top: 0.8rem;
+}
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+.detail-head h3 { font-size: 1.25rem; margin-top: 0.25rem; }
+.chart-detail .badges { margin-top: 0.7rem; padding-top: 0; }
+.family { margin-top: 0.9rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.family .eyebrow { margin-bottom: 0.45rem; }
+.family-row {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 1rem;
+  background: transparent; border: 1px solid var(--edge); border-radius: 8px;
+  padding: 0.42rem 0.7rem; cursor: pointer; color: var(--dim); font-size: 0.85rem; text-align: left;
+}
+.family-row:hover { border-color: var(--dim); color: var(--text); }
+.family-row.here { border-color: var(--cyan); color: var(--text); }
+.family-row .headline { font-weight: 600; }
+.fmark { font-family: var(--mono); font-style: normal; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; margin-left: 0.5rem; }
+
+/* Clickable dots on the scatter get a generous invisible hit target. */
+#scatter circle.hit { cursor: pointer; }
 
 /* ---- controls ---- */
 .controls { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }

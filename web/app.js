@@ -3,7 +3,7 @@
    parses in a blink, and the SVG here is simpler than the config a chart library would need. */
 
 const TIER_STORAGE_KEY = "kvasir.tier";
-const state = { view: null, showAll: false, tier: null };
+const state = { view: null, showAll: false, tier: null, selected: null, everyVariant: false };
 
 /* The tier is a view setting, not a user account: it lives in localStorage, survives every
    reload and deploy, and falls back to the tier the server nominates. */
@@ -26,6 +26,37 @@ function storeTier(id) {
 function plan() {
   const plans = (state.view && state.view.plans) || {};
   return plans[state.tier] || Object.values(plans)[0] || null;
+}
+
+/* ---------- variant selection: the chart and the ladder share one detail panel ---------- */
+
+const candidateId = (c) => `${c.key}|${c.effort}`;
+
+function findCandidate(id) {
+  if (!state.view || !id) return null;
+  return state.view.candidates.find((c) => candidateId(c) === id) || null;
+}
+
+function frontierIds() {
+  return new Set((state.view ? state.view.ladder : []).map((rung) => `${rung.key}|${rung.effort}`));
+}
+
+/* The frontier rung that already beats this variant: the first one, walking up from the
+   cheapest, whose score reaches it. A variant off the frontier is exactly a variant such a
+   rung exists for — that is what "dominated" means here. */
+function dominatorOf(candidate) {
+  return (state.view ? state.view.ladder : []).find((rung) => rung.score >= candidate.score) || null;
+}
+
+function selectVariant(id) {
+  state.selected = id;
+  renderScatter(state.view);
+  renderChartDetail();
+  renderLadder(state.view);
+}
+
+function toggleVariant(id) {
+  selectVariant(state.selected === id ? null : id);
 }
 
 const $ = (sel) => document.querySelector(sel);
@@ -357,14 +388,22 @@ function renderScatter(view) {
   }
 
   points.forEach((point) => {
-    const role = picks[`${point.key}|${point.effort}`];
+    const id = `${point.key}|${point.effort}`;
+    const role = picks[id];
     const fill = role ? colour[role] : "#3a4257";
     const radius = role ? 7 : 4.5;
+    const selected = state.selected === id;
     parts.push(
       `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius}" fill="${fill}" ${
         role ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
       }><title>${escapeHtml(point.label)} — ${pct(point.score)}, ${usd(point.cost_usd)}, ${point.steps} steps</title></circle>`
     );
+    if (selected) {
+      parts.push(
+        `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius + 3.5}" fill="none"
+           stroke="#e8ecf1" stroke-width="1.8" pointer-events="none"/>`
+      );
+    }
     if (role) {
       const x = sx(point.cost_usd);
       const anchor = x > W - 200 ? "end" : "start";
@@ -373,24 +412,157 @@ function renderScatter(view) {
         `<text x="${x + dx}" y="${sy(point.score) + 4}" fill="${fill}" font-size="13" font-weight="600" text-anchor="${anchor}" font-family="system-ui,sans-serif">${escapeHtml(point.label)}</text>`
       );
     }
+    /* The grey dots are small, so each gets an invisible, much larger hit target. */
+    parts.push(
+      `<circle class="hit" data-id="${escapeHtml(id)}" cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="11" fill="transparent"><title>${escapeHtml(point.label)}</title></circle>`
+    );
   });
 
   svg.innerHTML = parts.join("");
 }
 
+/* ---------- variant detail: what a clicked dot opens ---------- */
+
+function rolesPickingNow(candidate) {
+  const current = plan();
+  const out = [];
+  Object.entries((current && current.roles) || {}).forEach(([id, slot]) => {
+    if (slot.pick && candidateId(slot.pick) === candidateId(candidate)) out.push(id);
+  });
+  return out;
+}
+
+function renderChartDetail() {
+  const box = $("#chart-detail");
+  if (!box) return;
+  const candidate = findCandidate(state.selected);
+  if (!candidate) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  const onFrontier = frontierIds().has(candidateId(candidate));
+  const dominator = onFrontier ? null : dominatorOf(candidate);
+  const roles = rolesPickingNow(candidate);
+  const family = state.view.candidates
+    .filter((c) => c.key === candidate.key)
+    .sort((a, b) => (a.cost_uusd ?? 0) - (b.cost_uusd ?? 0));
+
+  const standing =
+    roles.length > 0
+      ? `<span class="badge">today's ${roles.join(" + ")}</span>`
+      : "";
+  const frontierLine = onFrontier
+    ? `<span class="badge ok">on the value frontier</span>`
+    : dominator
+    ? `<span class="badge bad" title="a cheaper variant already scores at least as much">beaten by ${escapeHtml(
+        dominator.label
+      )}</span>`
+    : "";
+
+  box.innerHTML = `
+    <div class="detail-head">
+      <div>
+        <div class="eyebrow">Variant</div>
+        <h3>${escapeHtml(candidate.label)}</h3>
+      </div>
+      <button class="toggle" id="detail-close" aria-label="Close">×</button>
+    </div>
+    <div class="badges">
+      <span class="badge">${pct(candidate.score)} CursorBench</span>
+      <span class="badge">${usd(candidate.cost_usd)} / task</span>
+      <span class="badge">${candidate.steps} steps · ${num(candidate.tokens)} tokens</span>
+      ${driftBadge(candidate.drift)}
+      ${copilotBadge(candidate.copilot)}
+      ${frontierLine}
+      ${standing}
+    </div>
+    ${
+      dominator && !onFrontier
+        ? `<p class="why">A cheaper variant (${escapeHtml(
+            dominator.label
+          )}) reaches ${pct(dominator.score)} for ${usd(dominator.cost_usd)} — this one only makes
+           sense when you specifically want more than that and accept paying for it.</p>`
+        : ""
+    }
+    ${
+      family.length > 1
+        ? `<div class="family">
+             <div class="eyebrow">Every ${escapeHtml(
+               candidate.label.split(" · ")[0]
+             )} effort level, cheapest first</div>
+             ${family
+               .map((variant) => {
+                 const id = candidateId(variant);
+                 const here = id === candidateId(candidate);
+                 const vFrontier = frontierIds().has(id);
+                 return `<button class="family-row ${here ? "here" : ""}" data-id="${escapeHtml(id)}">
+                   <span class="headline">${escapeHtml(variant.effort_label)}${vFrontier ? ' <i class="fmark cyan">frontier</i>' : ""}</span>
+                   <span class="mono">${pct(variant.score)} · ${usd(variant.cost_usd)}</span>
+                 </button>`;
+               })
+               .join("")}
+           </div>`
+        : ""
+    }`;
+  box.hidden = false;
+
+  $("#detail-close").addEventListener("click", () => selectVariant(null));
+  box.querySelectorAll(".family-row").forEach((row) => {
+    row.addEventListener("click", () => toggleVariant(row.getAttribute("data-id")));
+  });
+}
+
 /* ---------- value ladder ---------- */
 
-function renderLadder(ladder) {
+function renderLadder(view) {
   const box = $("#ladder");
   box.innerHTML = "";
-  ladder.forEach((rung, index) => {
-    if (index === 0) {
+  const onFrontier = frontierIds();
+
+  /* Frontier only (the default reading), or every loaded variant, cheapest first — the
+     frontier rungs keep their verdict styling, the dominated ones say what beats them. */
+  const rows = state.everyVariant
+    ? view.candidates
+        .filter((c) => c.cost_usd > 0)
+        .sort((a, b) => (a.cost_uusd ?? 0) - (b.cost_uusd ?? 0))
+        .map((candidate) => ({
+          id: candidateId(candidate),
+          candidate,
+          rung: view.ladder.find((r) => `${r.key}|${r.effort}` === candidateId(candidate)) || null,
+        }))
+    : view.ladder.map((rung) => ({
+        id: `${rung.key}|${rung.effort}`,
+        candidate: null,
+        rung,
+      }));
+
+  rows.forEach(({ id, candidate, rung }) => {
+    const selected = state.selected === id;
+    const cls = ["rung", rung ? rung.verdict || "fair" : "off", selected ? "here" : ""]
+      .filter(Boolean)
+      .join(" ");
+    if (!rung) {
+      /* Off the frontier: dominated by the cheapest frontier variant that scores as much. */
+      const dominator = dominatorOf(candidate);
       box.append(
-        tag(`<div class="rung fair">
+        tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
+          <div><span class="headline">${escapeHtml(candidate.label)}</span>
+            <div class="step">off the frontier — ${escapeHtml(dominator ? dominator.label : "a cheaper variant")} scores at least as much for less</div></div>
+          <div class="price">${pct(candidate.score)} · ${usd(candidate.cost_usd)}</div>
+        </button>`)
+      );
+      return;
+    }
+    /* The cheapest frontier rung has no step before it, so it introduces the ladder instead.
+       In every-variant mode the same rule holds: no verdict field means no step was priced. */
+    if (!rung.verdict) {
+      box.append(
+        tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
           <div><span class="headline">${escapeHtml(rung.label)}</span>
             <div class="step">starting point — as cheap as it gets</div></div>
           <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
-        </div>`)
+        </button>`)
       );
       return;
     }
@@ -401,12 +573,16 @@ function renderLadder(ladder) {
         ? "expensive for very little — only when it truly matters"
         : "a fair trade";
     box.append(
-      tag(`<div class="rung ${rung.verdict}">
+      tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
         <div><span class="headline">${escapeHtml(rung.label)}</span>
           <div class="step">from ${escapeHtml(rung.from_label)}: +${rung.delta_score_pp} pp for +${usd(rung.delta_cost_usd)} → <b>${usd(rung.usd_per_pp)}/pp</b> — ${message}</div></div>
         <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
-      </div>`)
+      </button>`)
     );
+  });
+
+  box.querySelectorAll(".rung").forEach((rung) => {
+    rung.addEventListener("click", () => toggleVariant(rung.getAttribute("data-id")));
   });
 }
 
@@ -572,7 +748,9 @@ function renderAll() {
   renderGaps((current && current.gaps) || view.gaps);
   renderTasks(view);
   renderScatter(view);
-  renderLadder(view.ladder);
+  renderLadder(view);
+  /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
+  renderChartDetail();
   renderDrift(view.drift, view.drift_history);
   renderCopilot(view);
   renderMethod(view);
@@ -601,6 +779,20 @@ $("#toggle-all").addEventListener("click", (event) => {
   event.currentTarget.setAttribute("aria-pressed", String(state.showAll));
   event.currentTarget.textContent = state.showAll ? "Hide filtered models" : "Show hidden models";
   load();
+});
+
+/* The value-sits section: one switch widens the ladder to every variant, clicks on dots and
+   rungs open the shared detail panel. Delegation survives the re-renders. */
+$("#toggle-ladder").addEventListener("click", (event) => {
+  state.everyVariant = !state.everyVariant;
+  event.currentTarget.setAttribute("aria-pressed", String(state.everyVariant));
+  event.currentTarget.textContent = state.everyVariant ? "Frontier only" : "Show every variant";
+  renderLadder(state.view);
+});
+
+$("#scatter").addEventListener("click", (event) => {
+  const hit = event.target.closest("[data-id]");
+  if (hit) toggleVariant(hit.getAttribute("data-id"));
 });
 
 load();
