@@ -169,6 +169,7 @@ def plan_for_tier(
     monthly = tasks_per_month()
     roles = {}
     total_credits = 0.0
+    board_best = max(candidates, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
 
     for role in ("architect", "worker", "scout"):
         share_credits = tier["credits"] * BUDGET_SHARES[role]
@@ -204,11 +205,27 @@ def plan_for_tier(
         per_task_credits = credits_for(pick["cost_uusd"], credit_usd)
         month_credits = per_task_credits * billable_tasks
         total_credits += month_credits
-        best = (reference.get(role) or {}).get("pick")
+
+        # What the budget actually costs this role, and only where that question makes
+        # sense. The architect's rule is "buy the best you can afford", so naming the model
+        # it could not afford is informative. The worker and the scout stop climbing for
+        # economic reasons, not budget ones — telling them about a model they deliberately
+        # did not want would be noise.
+        out_of_reach = None
+        if role == "architect" and board_best is not None and board_best is not pick:
+            best_price = credits_for(board_best["cost_uusd"], credit_usd)
+            if best_price is not None and best_price > per_task:
+                out_of_reach = {
+                    "label": board_best["label"],
+                    "score": board_best["score"],
+                    "per_task_credits": round(best_price),
+                    "ceiling_credits": round(per_task),
+                }
         roles[role] = {
             "pick": pick,
             "why": _why(role, pick, per_task, per_task_credits, monthly[role], drift_replaced),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
+            "out_of_reach": out_of_reach,
             "share_credits": round(share_credits),
             "per_task_budget_credits": round(per_task),
             "per_task_credits": round(per_task_credits, 1),
@@ -216,9 +233,6 @@ def plan_for_tier(
             "month_credits": round(month_credits),
             "month_usd": round(month_credits * credit_usd, 2),
             "share_used_pct": round(100 * month_credits / share_credits, 1) if share_credits else None,
-            "downgraded_from": None
-            if not best or (best["key"] == pick["key"] and best["effort"] == pick["effort"])
-            else best["label"],
         }
 
     # At a tight budget the worker and the scout collapse onto the same model. That is an

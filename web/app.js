@@ -278,8 +278,13 @@ function renderVerdicts(view) {
     const effort =
       pick.effort === "default" ? "" : `<em class="pick-effort">${escapeHtml(pick.effort_label)}</em>`;
     const notes = [];
-    if (slot.downgraded_from) {
-      notes.push(`Best regardless of budget: ${slot.downgraded_from}. This tier does not reach it.`);
+    if (slot.out_of_reach) {
+      const reach = slot.out_of_reach;
+      notes.push(
+        `The best on the board is ${reach.label} at ${pct(reach.score)}, ` +
+          `${credits(reach.per_task_credits)} credits a task — above this tier's ` +
+          `${credits(reach.ceiling_credits)}-credit ceiling for planning.`
+      );
     }
     if (slot.drift_replaced) {
       notes.push(`Drift veto: ${slot.drift_replaced} scores as well but is sliding on AI Stupid Level.`);

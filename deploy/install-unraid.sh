@@ -19,7 +19,10 @@ KV_NAME="${KV_NAME:-kvasir}"
 KV_PORT="${KV_PORT:-8688}"
 KV_APPDATA="${KV_APPDATA:-/mnt/user/appdata/kvasir}"
 KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7}"
-# Optional; read from the environment so the key never lands in the repo or in a template.
+# The AI Stupid Level key is a secret: it lives in a root-only file on the server and never
+# in this repo, in the Unraid template, or in a container label. Taken from the environment
+# when given, otherwise read back from the server so a redeploy cannot silently drop it.
+KV_SECRETS="${KV_SECRETS:-/mnt/user/appdata/kvasir/secrets.env}"
 KV_ASL_KEY="${KVASIR_STUPIDLEVEL_API_KEY:-}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,10 +35,19 @@ if [ "${1:-}" = "--template" ]; then
   echo "template + swag conf copied"
 fi
 
+if [ -n "$KV_ASL_KEY" ]; then
+  ssh "$KV_SERVER" "install -d -m 750 -o 99 -g 100 \"$(dirname "$KV_SECRETS")\" \
+    && printf 'KVASIR_STUPIDLEVEL_API_KEY=%s\n' \"$KV_ASL_KEY\" > \"$KV_SECRETS\" \
+    && chmod 600 \"$KV_SECRETS\""
+  echo "api key stored on the server"
+fi
+
 ssh "$KV_SERVER" bash -s <<REMOTE
 set -euo pipefail
 mkdir -p "$KV_APPDATA"
 chown 99:100 "$KV_APPDATA"
+ASL_KEY=""
+[ -f "$KV_SECRETS" ] && . "$KV_SECRETS" && ASL_KEY="\$KVASIR_STUPIDLEVEL_API_KEY"
 docker pull "$KV_IMAGE"
 docker rm -f "$KV_NAME" 2>/dev/null || true
 docker run -d --name "$KV_NAME" \
@@ -43,7 +55,7 @@ docker run -d --name "$KV_NAME" \
   -p ${KV_PORT}:8688 \
   -v "${KV_APPDATA}:/data" \
   -e KVASIR_DISABLED_MODELS="$KV_DISABLED" \
-  -e KVASIR_STUPIDLEVEL_API_KEY="$KV_ASL_KEY" \
+  -e KVASIR_STUPIDLEVEL_API_KEY="\$ASL_KEY" \
   -e TZ=Europe/Warsaw \
   -l net.unraid.docker.managed=dockerman \
   -l net.unraid.docker.webui="http://[IP]:[PORT:8688]/" \

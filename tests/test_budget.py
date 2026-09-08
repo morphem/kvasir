@@ -59,7 +59,10 @@ def test_a_tight_tier_buys_cheaper_models_than_a_generous_one():
     basic = payload["plans"]["basic"]
     power = payload["plans"]["power"]
     assert basic["roles"]["architect"]["per_task_credits"] < power["roles"]["architect"]["per_task_credits"]
-    assert basic["roles"]["architect"]["downgraded_from"]  # the budget, not the benchmark, decided
+    out_of_reach = basic["roles"]["architect"]["out_of_reach"]
+    assert out_of_reach  # the budget, not the benchmark, decided
+    assert out_of_reach["per_task_credits"] > out_of_reach["ceiling_credits"]
+    assert power["roles"]["architect"]["out_of_reach"] is None  # nothing is out of reach here
     assert basic["month_credits"] < power["month_credits"]
 
 
@@ -117,3 +120,17 @@ def test_the_drift_veto_applies_inside_a_tier_plan_too():
     assert architect["pick"]["key"] == "steady"
     assert architect["drift_replaced"] == "Falling · High"
     assert "sliding" in architect["why"]
+
+
+def test_a_richer_tier_is_never_told_it_fell_short():
+    """The card once said "this tier does not reach it" about a model it had outspent."""
+    payload = view()
+    for name, plan in payload["plans"].items():
+        for role, slot in plan["roles"].items():
+            reach = slot.get("out_of_reach")
+            if not reach:
+                continue
+            assert role == "architect", f"{name}/{role} should not carry an affordability note"
+            # the named model must genuinely cost more than the role's ceiling, and be better
+            assert reach["per_task_credits"] > reach["ceiling_credits"]
+            assert reach["score"] >= slot["pick"]["score"]
