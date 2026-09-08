@@ -19,6 +19,8 @@ KV_NAME="${KV_NAME:-kvasir}"
 KV_PORT="${KV_PORT:-8688}"
 KV_APPDATA="${KV_APPDATA:-/mnt/user/appdata/kvasir}"
 KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7}"
+# Optional; read from the environment so the key never lands in the repo or in a template.
+KV_ASL_KEY="${KVASIR_STUPIDLEVEL_API_KEY:-}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -41,6 +43,7 @@ docker run -d --name "$KV_NAME" \
   -p ${KV_PORT}:8688 \
   -v "${KV_APPDATA}:/data" \
   -e KVASIR_DISABLED_MODELS="$KV_DISABLED" \
+  -e KVASIR_STUPIDLEVEL_API_KEY="$KV_ASL_KEY" \
   -e TZ=Europe/Warsaw \
   -l net.unraid.docker.managed=dockerman \
   -l net.unraid.docker.webui="http://[IP]:[PORT:8688]/" \

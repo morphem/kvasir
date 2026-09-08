@@ -24,14 +24,18 @@ Continuously re-benchmarks models and publishes a 0-100 score with a trend, a co
 and a staleness flag. This is the drift signal: the answer to "Sonnet felt fine last week and feels
 stupid today — is that me?".
 
-Read from: the site's public JSON API (the backend is open source,
-`StudioPlatforms/aistupidmeter-api`):
+Read from the site's JSON API. **In September 2026 it split in two**, which is worth knowing
+before debugging a half-frozen drift section:
 
-- `GET /api/dashboard/scores` — current score per model (`?period=`, `?sortBy=`)
-- `GET /api/dashboard/history/{modelId}?period=7d` — that model's individual runs
+- `GET /api/v1/models` — current score per model. **Key-only** since 2026-09-04
+  (`Authorization: Bearer asl_live_…`, free tier 10 calls a day, 1 a minute). The legacy
+  `/api/dashboard/scores` now answers 401. Set `KVASIR_STUPIDLEVEL_API_KEY` and the collector uses
+  v1; leave it empty and the scores freeze at the last good reading, with the page saying so.
+- `GET /api/dashboard/history/{modelId}?period=7d` — that model's individual runs. Still open, no
+  key, and still current; this is what draws the sparklines, Δ7d and min–max.
 
-Polled hourly; the run history is backfilled daily, which is what gives the sparklines a real week
-of data on a fresh install.
+Scores are polled every 4 hours (the free quota is 10 a day); the run history every 6 hours. Both
+cadences are environment variables.
 
 **Do not** plot the dashboard score and the run history as one line. The dashboard number is a
 smoothed conversion of the runs; they are stored as separate series for that reason. **Do not**

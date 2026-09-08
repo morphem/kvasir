@@ -72,3 +72,58 @@ def test_stupidlevel_reads_scores_and_trends():
 def test_stupidlevel_rejects_a_failed_response():
     with pytest.raises(ValueError):
         stupidlevel.parse('{"success": false, "data": []}')
+
+
+def test_stupidlevel_says_what_a_401_means():
+    """The source went key-only in September; the run log must say that in words."""
+    import asyncio
+
+    class Response:
+        status_code = 401
+        text = '{"error": "api_key_required"}'
+
+    class Client:
+        def __init__(self):
+            self.headers_seen = None
+
+        async def get(self, url, headers=None):
+            self.headers_seen = headers
+            return Response()
+
+    with pytest.raises(PermissionError) as failure:
+        asyncio.run(stupidlevel.fetch(Client()))
+    assert "API key" in str(failure.value)
+    assert "KVASIR_STUPIDLEVEL_API_KEY" in str(failure.value)
+
+
+def test_stupidlevel_uses_the_v1_endpoint_when_a_key_is_set(monkeypatch):
+    import asyncio
+
+    from kvasir.config import Settings
+
+    # Settings is frozen, and the collector reads the module singleton at call time.
+    monkeypatch.setattr("kvasir.config.settings", Settings(stupidlevel_api_key="asl_live_test"))
+
+    class Response:
+        status_code = 200
+        text = None
+
+        def raise_for_status(self):
+            pass
+
+    calls = {}
+
+    class Client:
+        async def get(self, url, headers=None):
+            calls["url"] = url
+            calls["headers"] = headers or {}
+            response = Response()
+            response.text = open(
+                "tests/fixtures/stupidlevel-scores.json", encoding="utf-8"
+            ).read()
+            return response
+
+    rows, _ = asyncio.run(stupidlevel.fetch(Client()))
+    assert calls["url"] == stupidlevel.URL_V1
+    assert calls["headers"]["Authorization"] == "Bearer asl_live_test"
+    assert rows

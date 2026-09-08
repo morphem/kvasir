@@ -46,7 +46,9 @@ class Settings:
 
     # Poll intervals, in minutes. AI Stupid Level re-scores hourly; the other two
     # are documentation-shaped and move on the scale of days.
-    interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 60)
+    # Hourly until the source went key-only; the free tier now allows 10 requests a day, so
+    # six-a-day leaves room for retries. Lower it if a paid key ever arrives.
+    interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 240)
     interval_cursorbench: int = _int("KVASIR_INTERVAL_CURSORBENCH", 720)
     interval_copilot: int = _int("KVASIR_INTERVAL_COPILOT", 720)
     # AI Stupid Level's published run history, which draws the sparklines. Daily was too
@@ -77,6 +79,12 @@ class Settings:
     worker_max_cost_usd: float = float(os.environ.get("KVASIR_WORKER_MAX_COST", "2.50"))
     scout_max_cost_usd: float = float(os.environ.get("KVASIR_SCOUT_MAX_COST", "0.60"))
     architect_score_slack_pp: float = float(os.environ.get("KVASIR_ARCHITECT_SLACK", "3.0"))
+
+    # AI Stupid Level closed its scores endpoint behind a key in September 2026. Without
+    # one the page keeps the last good scores and says how old they are; with one it polls
+    # the v1 API. The free tier allows 10 requests a day, which is why the interval above
+    # is hours rather than minutes.
+    stupidlevel_api_key: str = os.environ.get("KVASIR_STUPIDLEVEL_API_KEY", "")
 
     request_timeout_s: int = _int("KVASIR_REQUEST_TIMEOUT", 30)
     # Set to 0 to serve whatever is already archived and never touch the network — used by

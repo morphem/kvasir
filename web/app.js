@@ -720,7 +720,23 @@ function sparkline(points, delta) {
   </svg>`;
 }
 
-function renderDrift(drift, history) {
+function renderDrift(drift, history, source) {
+  // The score column and the sparklines come from different endpoints of the same site, and
+  // since September they fail apart: scores went key-only, the run history stayed open. If
+  // half the section is frozen, the section has to say which half.
+  const stale = $("#drift-stale");
+  if (stale) {
+    const error = source && source.last_error;
+    stale.hidden = !error;
+    if (error) {
+      const why = /api key|401|403/i.test(error)
+        ? "the scores endpoint now requires an API key"
+        : "the scores endpoint is failing";
+      stale.textContent =
+        `Scores frozen at ${(source.captured_at || "").slice(0, 16).replace("T", " ")} — ${why}. ` +
+        "The sparklines, Δ7d and min–max below come from the run history, which is still current.";
+    }
+  }
   const note = $("#drift-refreshed");
   if (note) {
     const every =
@@ -866,7 +882,7 @@ function renderAll() {
   renderLadder(view);
   /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
   renderChartDetail();
-  renderDrift(view.drift, view.drift_history);
+  renderDrift(view.drift, view.drift_history, view.sources && view.sources.stupidlevel);
   renderCopilot(view);
   renderMethod(view);
 }

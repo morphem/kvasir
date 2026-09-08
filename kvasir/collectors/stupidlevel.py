@@ -16,6 +16,12 @@ from ..naming import model_key, split_effort, vendor_of
 
 SOURCE = "stupidlevel"
 URL = "https://aistupidlevel.info/api/dashboard/scores"
+URL_V1 = "https://aistupidlevel.info/api/v1/models"
+SIGNUP_URL = "https://aistupidlevel.info/router/data-keys"
+KEY_REQUIRED = (
+    "AI Stupid Level scores now need an API key. Create a free one at "
+    f"{SIGNUP_URL} and set KVASIR_STUPIDLEVEL_API_KEY."
+)
 SITE_URL = "https://aistupidlevel.info/"
 LABEL = "AI Stupid Level"
 
@@ -72,7 +78,24 @@ def _num(value):
 
 
 async def fetch(client) -> tuple[list[dict], dict]:
-    response = await client.get(URL)
+    """Read the scoreboard, through the v1 API when we hold a key.
+
+    The failure that matters here is 401: it means the source changed its terms, not that
+    the network blinked, and the run log should say so in words a human can act on rather
+    than in an HTTP status.
+    """
+    from ..config import settings
+
+    key = settings.stupidlevel_api_key
+    if key:
+        response = await client.get(URL_V1, headers={"Authorization": f"Bearer {key}"})
+    else:
+        response = await client.get(URL)
+
+    if response.status_code in (401, 403):
+        raise PermissionError(KEY_REQUIRED)
+    if response.status_code == 429:
+        raise RuntimeError("AI Stupid Level rate limit reached — the free tier allows 10 calls a day")
     response.raise_for_status()
     return parse(response.text)
 
