@@ -124,3 +124,18 @@ def test_recommendations_are_counted_in_the_archive_stats():
     db.archive_recommendation(path, DECISION)
     stats = db.archive_stats(path)
     assert stats["recommendations"] == 1
+
+
+def test_a_recovered_source_stops_reporting_an_error():
+    """A healed source kept the banner up: the query read the last failure, not the last run."""
+    path = fresh_db()
+    db.log_run(path, "stupidlevel", db.now_iso(), False, False, 0, "HTTPError: 401", None)
+    failing = db.source_status(path)["stupidlevel"]
+    assert failing["failing"] is True
+    assert failing["last_error"].startswith("HTTPError")
+
+    db.log_run(path, "stupidlevel", db.now_iso(), True, True, 24, None, None)
+    healed = db.source_status(path)["stupidlevel"]
+    assert healed["failing"] is False
+    assert "last_error" not in healed
+    assert healed["failures"] == 1  # the history is still counted

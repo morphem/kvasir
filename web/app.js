@@ -731,10 +731,17 @@ function renderDrift(drift, history, source) {
   // half the section is frozen, the section has to say which half.
   const stale = $("#drift-stale");
   if (stale) {
-    const error = source && source.last_error;
-    stale.hidden = !error;
-    if (error) {
-      const why = /api key|401|403/i.test(error)
+    // Two separate conditions: the source failing its last poll, and the data being old
+    // enough to stop deciding anything. Either is worth a banner; neither is worth one
+    // once the source has recovered and the numbers are current again.
+    const failing = source && (source.failing || source.last_error);
+    const untrusted = state.view && state.view.drift_trusted === false;
+    const error = failing ? source.last_error : null;
+    stale.hidden = !(failing || untrusted);
+    if (failing || untrusted) {
+      const why = !error
+        ? "the last reading is older than the drift check trusts"
+        : /api key|401|403/i.test(error)
         ? "the scores endpoint now requires an API key"
         : "the scores endpoint is failing";
       const suspended =

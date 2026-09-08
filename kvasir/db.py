@@ -344,13 +344,18 @@ def source_status(db_path: str) -> dict[str, dict]:
                     "last_change": row["last_change"],
                 }
             )
+        # "Has failed before" and "is failing now" are different facts, and the page acts on
+        # the second one. Reading the newest run per source keeps a healed source from
+        # wearing a warning banner about an outage it has already recovered from.
         for row in conn.execute(
-            """SELECT source, error, started_at FROM source_run
-               WHERE ok=0 AND id IN (SELECT MAX(id) FROM source_run WHERE ok=0 GROUP BY source)"""
+            """SELECT source, ok, error, started_at FROM source_run
+               WHERE id IN (SELECT MAX(id) FROM source_run GROUP BY source)"""
         ):
             entry = out.setdefault(row["source"], {})
-            entry["last_error"] = row["error"]
-            entry["last_error_at"] = row["started_at"]
+            entry["failing"] = not row["ok"]
+            if not row["ok"]:
+                entry["last_error"] = row["error"]
+                entry["last_error_at"] = row["started_at"]
     return out
 
 
