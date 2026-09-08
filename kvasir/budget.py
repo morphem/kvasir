@@ -51,6 +51,17 @@ def drifting(candidate: dict) -> bool:
     return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
 
 
+def steady(candidate: dict) -> bool:
+    """Measured, and measured as holding.
+
+    Not the same as "not drifting": a model absent from AI Stupid Level is not drifting
+    either, and it must not win a veto on that basis. Otherwise the models nobody measures
+    beat every model that is measured, purely by having no record — which is how an
+    unmeasured model took all three roles here.
+    """
+    return bool(candidate.get("drift")) and not drifting(candidate)
+
+
 def tasks_per_month() -> dict[str, float]:
     total = WORKING_DAYS * TASKS_PER_DAY
     return {role: round(total * share, 1) for role, share in ROLE_MIX.items()}
@@ -89,12 +100,17 @@ def _walk_ladder(frontier: list[dict], per_task_credits: float, credit_usd: floa
     return pick
 
 
-def _avoid_drift(pick: dict, affordable: list[dict]):
-    """Trade a sliding model for a steady one, as long as the trade is nearly free."""
-    if not drifting(pick):
+def _avoid_drift(pick: dict, affordable: list[dict], trusted: bool = True):
+    """Trade a sliding model for a steady one, as long as the trade is nearly free.
+
+    Only a model with its own evidence of holding steady can take the slot, and only while
+    the drift signal itself is fresh — a frozen reading keeps vetoing the same model for as
+    long as the source stays down.
+    """
+    if not trusted or not drifting(pick):
         return pick, None
     for other in sorted(affordable, key=lambda c: -c["score"]):
-        if other is pick or drifting(other):
+        if other is pick or not steady(other):
             continue
         if other["score"] >= pick["score"] - DRIFT_MAX_SCORE_LOSS_PP:
             return other, pick
@@ -142,7 +158,12 @@ def _why(
 
 
 def plan_for_tier(
-    tier: dict, candidates: list[dict], frontier: list[dict], credit_usd: float, reference: dict
+    tier: dict,
+    candidates: list[dict],
+    frontier: list[dict],
+    credit_usd: float,
+    reference: dict,
+    drift_trusted: bool = True,
 ) -> dict:
     """Fill the three roles under one tier's monthly credit budget."""
     monthly = tasks_per_month()
@@ -163,7 +184,7 @@ def plan_for_tier(
             pool = [c for c in frontier if _fits(c, per_task, credit_usd)]
         if pick is not None:
             # The budget decides what is affordable; drift still decides what is sane.
-            pick, drift_replaced = _avoid_drift(pick, pool)
+            pick, drift_replaced = _avoid_drift(pick, pool, drift_trusted)
         else:
             drift_replaced = None
         if pick is None:
@@ -230,9 +251,16 @@ def plan_for_tier(
     }
 
 
-def plans(tiers: list[dict], candidates: list[dict], frontier: list[dict], credit_usd: float, reference: dict) -> dict:
+def plans(
+    tiers: list[dict],
+    candidates: list[dict],
+    frontier: list[dict],
+    credit_usd: float,
+    reference: dict,
+    drift_trusted: bool = True,
+) -> dict:
     return {
-        tier["id"]: plan_for_tier(tier, candidates, frontier, credit_usd, reference)
+        tier["id"]: plan_for_tier(tier, candidates, frontier, credit_usd, reference, drift_trusted)
         for tier in tiers
     }
 

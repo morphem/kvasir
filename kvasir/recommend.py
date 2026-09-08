@@ -13,6 +13,8 @@ quietly getting worse this week should not win on last month's benchmark.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from . import budget, db
 from .catalog import TASKS, TIER_BY_ID, TIERS
 from .naming import EFFORT_LABELS, label as model_label, vendor_of
@@ -105,6 +107,31 @@ def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tupl
     return candidates, copilot_only
 
 
+# A drift reading older than this is history, not a signal: it would keep vetoing the same
+# model for as long as the source stays down. Two days covers a weekend outage.
+DRIFT_TRUST_HOURS = 48
+
+
+def drift_freshness(ai_rows: list[dict]) -> tuple[str | None, float | None]:
+    """How old the drift source's own newest measurement is, in hours."""
+    stamps = []
+    for row in ai_rows:
+        raw = row.get("last_updated")
+        if not raw:
+            continue
+        try:
+            stamps.append(datetime.fromisoformat(str(raw).replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    if not stamps:
+        return None, None
+    newest = max(stamps)
+    if newest.tzinfo is None:
+        newest = newest.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - newest).total_seconds() / 3600
+    return newest.isoformat(timespec="seconds"), round(age, 1)
+
+
 AVAILABLE = "available"
 NOT_IN_COPILOT = "not-in-copilot"
 NOT_ENABLED = "not-enabled"
@@ -141,12 +168,12 @@ def availability(candidate: dict, disabled: list[str]) -> str:
     return AVAILABLE
 
 
-def _swap_for_drift(pick: dict, pool: list[dict]) -> tuple[dict, dict | None]:
+def _swap_for_drift(pick: dict, pool: list[dict], trusted: bool = True) -> tuple[dict, dict | None]:
     """If the winner is drifting, take the nearest non-drifting model instead."""
-    if not budget.drifting(pick):
+    if not trusted or not budget.drifting(pick):
         return pick, None
     for other in sorted(pool, key=lambda c: -c["score"]):
-        if other is pick or budget.drifting(other):
+        if other is pick or not budget.steady(other):
             continue
         if other["score"] < pick["score"] - budget.DRIFT_MAX_SCORE_LOSS_PP:
             continue
@@ -156,7 +183,7 @@ def _swap_for_drift(pick: dict, pool: list[dict]) -> tuple[dict, dict | None]:
     return pick, None
 
 
-def pick_tiers(candidates: list[dict], cfg) -> dict:
+def pick_tiers(candidates: list[dict], cfg, drift_trusted: bool = True) -> dict:
     """Fill the three roles from the current data. Thresholds come from config."""
     if not candidates:
         return {}
@@ -187,7 +214,7 @@ def pick_tiers(candidates: list[dict], cfg) -> dict:
     verdicts = {}
     for tier_id, pool in pools.items():
         raw_pick = chooser[tier_id](pool)
-        pick, replaced = _swap_for_drift(raw_pick, pool)
+        pick, replaced = _swap_for_drift(raw_pick, pool, drift_trusted)
         runner_up = next(
             (c for c in sorted(pool, key=lambda c: -c["score"]) if c["key"] != pick["key"]), None
         )
@@ -434,9 +461,14 @@ def build(
     # taken. `show_all` opens the board so the cost of the restriction stays visible.
     visible = candidates if show_all else [c for c in candidates if c["available"]]
     excluded = [] if show_all else [c for c in candidates if not c["available"]]
-    verdicts = pick_tiers(visible, cfg)
+    drift_newest, drift_age_hours = drift_freshness(ai_rows)
+    drift_trusted = drift_age_hours is not None and drift_age_hours <= DRIFT_TRUST_HOURS
+
+    verdicts = pick_tiers(visible, cfg, drift_trusted)
     rate = credit_usd or budget.CREDIT_USD_FALLBACK
-    plans = budget.plans(cfg.tiers, visible, frontier(visible), rate, verdicts)
+    plans = budget.plans(
+        cfg.tiers, visible, frontier(visible), rate, verdicts, drift_trusted=drift_trusted
+    )
     for plan in plans.values():
         # The distance between roles is worth seeing per tier: on a tight budget two roles can
         # land on one model, and then the gap is genuinely zero.
@@ -457,6 +489,9 @@ def build(
         "candidates": sorted(visible, key=lambda c: -c["score"]),
         "excluded": sorted(excluded, key=lambda c: -c["score"]),
         "availability_known": availability_known,
+        "drift_trusted": drift_trusted,
+        "drift_age_hours": drift_age_hours,
+        "drift_newest": drift_newest,
         "all_candidates_count": len(candidates),
         "disabled_families": sorted({f.lower() for f in disabled}),
         "copilot_only": copilot_only,

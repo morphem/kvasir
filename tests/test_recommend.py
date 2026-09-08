@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from datetime import datetime, timezone
 
 from conftest import fixture
 
@@ -74,9 +75,12 @@ def test_drift_veto_prefers_a_stable_model():
         {"model_key": "steady", "effort": "high", "rank": 2, "score": 59.0,
          "cost_uusd": 1_100_000, "tokens": 1000, "steps": 10},
     ]
+    now = datetime.now(timezone.utc).isoformat()
     ai = [
-        {"model_key": "falling", "score": 40, "trend": "down", "status": "warning", "is_stale": False},
-        {"model_key": "steady", "score": 70, "trend": "stable", "status": "good", "is_stale": False},
+        {"model_key": "falling", "score": 40, "trend": "down", "status": "warning",
+         "is_stale": False, "last_updated": now},
+        {"model_key": "steady", "score": 70, "trend": "stable", "status": "good",
+         "is_stale": False, "last_updated": now},
     ]
     view = recommend.build(cb, ai, [], Settings(), [])
     worker = view["verdicts"]["worker"]
@@ -183,3 +187,61 @@ def test_a_disabled_family_never_reaches_a_verdict():
     # and it comes back the moment the board is opened
     opened = recommend.build(cb, [], cp, settings, ["fable"], show_all=True)
     assert opened["verdicts"]["architect"]["pick"]["key"] == "fable-5.1"
+
+
+def _pair(drift_a, drift_b):
+    """A dipping favourite and a cheaper rival, with whatever drift records are given."""
+    cb = [
+        {"model_key": "favourite", "effort": "max", "rank": 1, "score": 70.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+        {"model_key": "rival", "effort": "max", "rank": 2, "score": 69.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+    ]
+    cp = [
+        {"model_key": k, "effort": "default", "tier": "Default",
+         "input_uusd": 1, "output_uusd": 1, "category": "Powerful"}
+        for k in ("favourite", "rival")
+    ]
+    ai = [row for row in (drift_a, drift_b) if row]
+    return cb, ai, cp
+
+
+def test_an_unmeasured_model_never_wins_a_drift_veto():
+    """Absence of a drift record is not evidence of stability — it beat every measured model."""
+    fresh = datetime.now(timezone.utc).isoformat()
+    cb, ai, cp = _pair(
+        {"model_key": "favourite", "score": 70, "trend": "down", "status": "good",
+         "is_stale": False, "last_updated": fresh},
+        None,  # the rival is simply not in AI Stupid Level
+    )
+    view = recommend.build(cb, ai, cp, Settings(), [])
+    assert view["verdicts"]["architect"]["pick"]["key"] == "favourite"
+    assert view["verdicts"]["architect"]["replaced"] is None
+
+
+def test_a_measured_steady_model_still_wins_the_veto():
+    fresh = datetime.now(timezone.utc).isoformat()
+    cb, ai, cp = _pair(
+        {"model_key": "favourite", "score": 70, "trend": "down", "status": "good",
+         "is_stale": False, "last_updated": fresh},
+        {"model_key": "rival", "score": 72, "trend": "stable", "status": "good",
+         "is_stale": False, "last_updated": fresh},
+    )
+    view = recommend.build(cb, ai, cp, Settings(), [])
+    assert view["verdicts"]["architect"]["pick"]["key"] == "rival"
+    assert view["drift_trusted"] is True
+
+
+def test_a_frozen_drift_signal_stops_vetoing():
+    """A reading from four days ago kept vetoing the same model every hour."""
+    old = "2020-01-01T00:00:00+00:00"
+    cb, ai, cp = _pair(
+        {"model_key": "favourite", "score": 70, "trend": "down", "status": "good",
+         "is_stale": False, "last_updated": old},
+        {"model_key": "rival", "score": 72, "trend": "stable", "status": "good",
+         "is_stale": False, "last_updated": old},
+    )
+    view = recommend.build(cb, ai, cp, Settings(), [])
+    assert view["drift_trusted"] is False
+    assert view["drift_age_hours"] > recommend.DRIFT_TRUST_HOURS
+    assert view["verdicts"]["architect"]["pick"]["key"] == "favourite"

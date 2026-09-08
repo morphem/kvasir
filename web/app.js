@@ -732,9 +732,15 @@ function renderDrift(drift, history, source) {
       const why = /api key|401|403/i.test(error)
         ? "the scores endpoint now requires an API key"
         : "the scores endpoint is failing";
+      const suspended =
+        state.view && state.view.drift_trusted === false
+          ? " The drift veto is suspended while the scores are this old, so the verdict above is " +
+            "decided on cost and score alone."
+          : "";
       stale.textContent =
         `Scores frozen at ${(source.captured_at || "").slice(0, 16).replace("T", " ")} — ${why}. ` +
-        "The sparklines, Δ7d and min–max below come from the run history, which is still current.";
+        "The sparklines, Δ7d and min–max below come from the run history, which is still current." +
+        suspended;
     }
   }
   const note = $("#drift-refreshed");

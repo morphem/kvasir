@@ -4,6 +4,8 @@ These tests pin the arithmetic and the discipline, not the specific models — t
 whatever the live data says this week.
 """
 
+from datetime import datetime, timezone
+
 from conftest import fixture
 
 from kvasir import budget, recommend
@@ -102,9 +104,12 @@ def test_the_drift_veto_applies_inside_a_tier_plan_too():
         {"model_key": "steady", "effort": "high", "rank": 2, "score": 59.0,
          "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
     ]
+    now = datetime.now(timezone.utc).isoformat()
     ai = [
-        {"model_key": "falling", "score": 40, "trend": "down", "status": "warning", "is_stale": False},
-        {"model_key": "steady", "score": 70, "trend": "stable", "status": "good", "is_stale": False},
+        {"model_key": "falling", "score": 40, "trend": "down", "status": "warning",
+         "is_stale": False, "last_updated": now},
+        {"model_key": "steady", "score": 70, "trend": "stable", "status": "good",
+         "is_stale": False, "last_updated": now},
     ]
     settings = Settings(tiers=[{"id": "roomy", "name": "Roomy", "credits": 1_000_000}])
     payload = recommend.build(cb, ai, [], settings, [], credit_usd=0.01)
