@@ -53,12 +53,16 @@ class Settings:
     # slow: the headline score moves hourly, so the chart beside it was up to a day behind.
     interval_backfill: int = _int("KVASIR_INTERVAL_BACKFILL", 360)
 
-    # Fetch every model the sources publish (the archive keeps everything), but hide
-    # these from the default view. The UI has a switch to show them anyway.
-    hidden_models: list[str] = field(
+    # Models GitHub sells but our own Copilot subscription does not enable. Everything else
+    # is decided from data: a model absent from GitHub's pricing page is not ours to pick,
+    # so it never needs an entry here.
+    #
+    # Entries are families, not exact keys. "fable" blocks fable-5 and fable-5.1 — an exact
+    # key list let fable-5.1 into the verdict the day GitHub shipped it.
+    disabled_models: list[str] = field(
         default_factory=lambda: _csv(
-            "KVASIR_HIDDEN_MODELS",
-            "grok-4.5,grok-4.6,fable-5,gpt-5.6-sol,kimi-k3,kimi-k2.7-code,glm-5.2",
+            "KVASIR_DISABLED_MODELS",
+            os.environ.get("KVASIR_HIDDEN_MODELS", "grok,fable,kimi-k2.7"),
         )
     )
 

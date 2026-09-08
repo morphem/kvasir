@@ -57,7 +57,7 @@ add the container from the template — updates then arrive the normal Unraid wa
 | `KVASIR_INTERVAL_STUPIDLEVEL` | `60` | Drift poll interval, minutes |
 | `KVASIR_INTERVAL_CURSORBENCH` | `720` | CursorBench poll interval, minutes |
 | `KVASIR_INTERVAL_COPILOT` | `720` | Copilot pricing poll interval, minutes |
-| `KVASIR_HIDDEN_MODELS` | see `config.py` | Hidden from the default view — still collected and archived |
+| `KVASIR_DISABLED_MODELS` | `grok,fable,kimi-k2.7` | Model *families* Copilot sells but we cannot use. Models absent from Copilot are excluded automatically |
 | `KVASIR_WORKER_MAX_COST` | `2.50` | Worker's cost ceiling, USD per task |
 | `KVASIR_SCOUT_MAX_COST` | `0.60` | Scout's cost ceiling, USD per task |
 | `KVASIR_AUTOSTART` | `1` | `0` serves the archive and never touches the network |

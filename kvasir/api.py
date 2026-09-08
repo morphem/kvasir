@@ -159,12 +159,17 @@ def view(all: bool = Query(False, description="include models hidden by configur
     cb_rows, cb_meta = db.latest(settings.db_path, "cursorbench")
     ai_rows, _ = db.latest(settings.db_path, "stupidlevel")
     cp_rows, cp_meta = db.latest(settings.db_path, "copilot")
-    hidden = [] if all else settings.hidden_models
     payload = recommend.build(
-        cb_rows, ai_rows, cp_rows, settings, hidden, credit_usd=cp_meta.get("credit_usd")
+        cb_rows,
+        ai_rows,
+        cp_rows,
+        settings,
+        settings.disabled_models,
+        credit_usd=cp_meta.get("credit_usd"),
+        show_all=all,
     )
     payload["credit_usd_quote"] = cp_meta.get("credit_usd_quote")
-    payload["hidden_by_config"] = settings.hidden_models
+    payload["disabled_by_config"] = settings.disabled_models
     payload["showing_all"] = all
     payload.update(
         {

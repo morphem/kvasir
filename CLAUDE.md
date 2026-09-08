@@ -13,8 +13,8 @@ every source it quotes is English, so a Polish shell around English data would o
 translation layer to maintain. Conversation with the owner stays Polish.
 
 **Audience: one organisation, internally — and the page never names it.** The model board is
-filtered to what that organisation's Copilot subscription enables (`KVASIR_HIDDEN_MODELS` is that
-filter, not a taste preference), and the budget layer works in its AI-credit tiers — Basic 13K,
+limited to what that organisation can actually start — sold by Copilot, and not in a disabled
+family (`KVASIR_DISABLED_MODELS`) — and the budget layer works in its AI-credit tiers — Basic 13K,
 Heavy 100K, Power 200K. Employer, client and project names stay off the page and out of this repo:
 it is publicly reachable, so everything here has to be something three public sources already say.
 Company data, code and account details never appear, and must not start to.
@@ -65,9 +65,17 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   the budget split are constants at the top of `budget.py` and are printed on the page. Re-tuning
   them until the answer looks better is falsifying the answer; replace the model with measured
   usage instead.
-- **Hidden models are hidden, never dropped.** `KVASIR_HIDDEN_MODELS` filters the default view;
-  collection and archiving always cover everything the sources publish. `/api/view?all=1` shows
-  them.
+- **Availability is derived, not listed.** A model reaches the verdict only if GitHub's Copilot
+  pricing page sells it *and* it is not in a disabled family. That first half is data: benchmark-only
+  models (Composer, Muse Spark) fall off the board with nobody maintaining anything. Never
+  reintroduce a hand-kept "available models" list — the one we had recommended Muse Spark, which
+  Copilot does not carry.
+- **`KVASIR_DISABLED_MODELS` holds families, not keys.** "fable" covers fable-5 *and* fable-5.1.
+  The exact-key list it replaced let fable-5.1 become the recommended architect the day GitHub
+  shipped it, because "fable-5" did not match it. Point releases arrive faster than lists get
+  updated; match families.
+- **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
+  the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
 
 ## Behavioural guidelines (Andrej Karpathy skills)
 

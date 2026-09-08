@@ -10,12 +10,13 @@ from kvasir.collectors import copilot, cursorbench, stupidlevel
 from kvasir.config import Settings
 
 
-def build(hidden=None):
+def build(disabled=None):
     cb, _ = cursorbench.parse(fixture("cursorbench.html"))
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, _ = copilot.parse(fixture("copilot-models-and-pricing.html"))
     settings = Settings()
-    return recommend.build(cb, ai, cp, settings, hidden if hidden is not None else [])
+    disabled = disabled if disabled is not None else settings.disabled_models
+    return recommend.build(cb, ai, cp, settings, disabled)
 
 
 def test_every_tier_gets_a_pick_with_an_effort():
@@ -46,11 +47,11 @@ def test_thresholds_are_respected():
     assert view["verdicts"]["architect"]["pick"]["score"] >= top - settings.architect_score_slack_pp
 
 
-def test_hidden_models_leave_the_view_but_stay_in_the_data():
-    everything = build()
-    filtered = build(hidden=["grok-4.6", "fable-5"])
+def test_disabled_models_leave_the_view_but_stay_in_the_data():
+    everything = build(disabled=[])
+    filtered = build(disabled=["grok", "fable"])
     assert any(c["key"] == "grok-4.6" for c in everything["candidates"])
-    assert not any(c["key"] in {"grok-4.6", "fable-5"} for c in filtered["candidates"])
+    assert not any(c["key"].startswith(("grok", "fable")) for c in filtered["candidates"])
     assert filtered["all_candidates_count"] == everything["all_candidates_count"]
 
 
@@ -123,7 +124,7 @@ def test_capture_archives_the_verdict_once_per_change():
     assert recommend.capture(path, cfg) is False  # an unchanged verdict writes nothing
 
     stored = db.recommendation_history(path, days=1)[0]
-    expected = build(cfg.hidden_models)["verdicts"]  # the capture filters like the default view
+    expected = build(cfg.disabled_models)["verdicts"]  # the capture filters like the default view
     for tier_id, verdict in stored["verdicts"].items():
         pick = verdict["pick"]
         assert pick["key"] == expected[tier_id]["pick"]["key"]
@@ -139,3 +140,46 @@ def test_capture_refuses_an_incomplete_board():
     db.archive(path, "cursorbench", rows, {})
     assert recommend.capture(path, Settings()) is False
     assert db.archive_stats(path)["recommendations"] == 0
+
+
+def test_availability_is_read_from_copilot_not_from_a_list():
+    """A model GitHub does not sell is off the board without anyone maintaining an entry."""
+    view = build()
+    keys = {c["key"] for c in view["candidates"]}
+    excluded = {c["key"]: c["unavailable_reason"] for c in view["excluded"]}
+    assert "composer-2.5" not in keys
+    assert excluded.get("composer-2.5") == "not in Copilot"
+
+
+def test_disabled_families_cover_point_releases():
+    """fable-5.1 arrived after the list said "fable-5", and walked straight into the verdict."""
+    assert recommend.in_family("fable-5.1", "fable")
+    assert recommend.in_family("fable-5", "fable")
+    assert recommend.in_family("grok-4.6", "grok")
+    assert recommend.in_family("kimi-k2.7-code", "kimi-k2.7")
+    # a family must not swallow its neighbours
+    assert not recommend.in_family("kimi-k3", "kimi-k2.7")
+    assert not recommend.in_family("gpt-5.6-terra", "gpt-5.6-sol")
+    assert not recommend.in_family("sonnet-5", "sonnet-4")
+
+
+def test_a_disabled_family_never_reaches_a_verdict():
+    cb = [
+        {"model_key": "fable-5.1", "effort": "max", "rank": 1, "score": 90.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+        {"model_key": "opus-5", "effort": "max", "rank": 2, "score": 70.0,
+         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+    ]
+    cp = [
+        {"model_key": "fable-5.1", "effort": "default", "tier": "Default",
+         "input_uusd": 1, "output_uusd": 1, "category": "Powerful"},
+        {"model_key": "opus-5", "effort": "default", "tier": "Default",
+         "input_uusd": 1, "output_uusd": 1, "category": "Powerful"},
+    ]
+    settings = Settings()
+    view = recommend.build(cb, [], cp, settings, ["fable"])
+    assert {c["key"] for c in view["candidates"]} == {"opus-5"}
+    assert view["verdicts"]["architect"]["pick"]["key"] == "opus-5"
+    # and it comes back the moment the board is opened
+    opened = recommend.build(cb, [], cp, settings, ["fable"], show_all=True)
+    assert opened["verdicts"]["architect"]["pick"]["key"] == "fable-5.1"

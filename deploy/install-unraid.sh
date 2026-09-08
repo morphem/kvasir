@@ -18,7 +18,7 @@ KV_IMAGE="${KV_IMAGE:-ghcr.io/morphem/kvasir:latest}"
 KV_NAME="${KV_NAME:-kvasir}"
 KV_PORT="${KV_PORT:-8688}"
 KV_APPDATA="${KV_APPDATA:-/mnt/user/appdata/kvasir}"
-KV_HIDDEN="${KV_HIDDEN:-grok-4.5,grok-4.6,fable-5,gpt-5.6-sol,kimi-k3,kimi-k2.7-code,glm-5.2}"
+KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -40,7 +40,7 @@ docker run -d --name "$KV_NAME" \
   --restart unless-stopped \
   -p ${KV_PORT}:8688 \
   -v "${KV_APPDATA}:/data" \
-  -e KVASIR_HIDDEN_MODELS="$KV_HIDDEN" \
+  -e KVASIR_DISABLED_MODELS="$KV_DISABLED" \
   -e TZ=Europe/Warsaw \
   -l net.unraid.docker.managed=dockerman \
   -l net.unraid.docker.webui="http://[IP]:[PORT:8688]/" \

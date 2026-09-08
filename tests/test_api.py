@@ -50,12 +50,27 @@ def test_view_is_one_consistent_payload():
         assert source["interval_minutes"] > 0
 
 
-def test_hidden_models_can_be_unhidden_on_demand():
+def test_unavailable_models_can_be_shown_on_demand():
     api = client()
     default_view = api.get("/api/view").json()
     everything = api.get("/api/view", params={"all": True}).json()
-    assert len(everything["candidates"]) >= len(default_view["candidates"])
+    assert len(everything["candidates"]) > len(default_view["candidates"])
     assert everything["showing_all"] is True
+    assert everything["excluded"] == []
+
+
+def test_the_default_board_only_holds_models_we_can_start():
+    """The verdict must never name a model nobody here can run — it reads as advice."""
+    body = client().get("/api/view").json()
+    for candidate in body["candidates"]:
+        assert candidate["copilot"], f"{candidate['label']} is not sold by Copilot"
+        assert candidate["available"] is True
+    for plan in body["plans"].values():
+        for role in plan["roles"].values():
+            if role.get("pick"):
+                assert role["pick"]["copilot"], f"{role['pick']['label']} cannot be started here"
+    for candidate in body["excluded"]:
+        assert candidate["unavailable_reason"] in {"not in Copilot", "not enabled for us"}
 
 
 def test_view_says_when_each_source_is_due_again():

@@ -19,7 +19,7 @@ def view(tiers=None):
     if tiers:
         settings = Settings(tiers=tiers)
     return recommend.build(
-        cb, ai, cp, settings, settings.hidden_models, credit_usd=cp_meta.get("credit_usd")
+        cb, ai, cp, settings, settings.disabled_models, credit_usd=cp_meta.get("credit_usd")
     )
 
 

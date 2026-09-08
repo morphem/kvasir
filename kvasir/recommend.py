@@ -105,6 +105,42 @@ def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tupl
     return candidates, copilot_only
 
 
+AVAILABLE = "available"
+NOT_IN_COPILOT = "not-in-copilot"
+NOT_ENABLED = "not-enabled"
+
+AVAILABILITY_LABELS = {
+    NOT_IN_COPILOT: "not in Copilot",
+    NOT_ENABLED: "not enabled for us",
+}
+
+
+def in_family(key: str, family: str) -> bool:
+    """Does this model key belong to a disabled family?
+
+    Families, not exact keys: "fable" covers fable-5 and fable-5.1, and "fable-5" still
+    covers fable-5.1. Vendors ship point releases faster than anyone updates a list, and an
+    exact-match list silently promotes the new version into the verdict — which is exactly
+    how fable-5.1 became the recommended architect.
+    """
+    key, family = key.lower(), family.lower()
+    return key == family or key.startswith(family + "-") or key.startswith(family + ".")
+
+
+def availability(candidate: dict, disabled: list[str]) -> str:
+    """Can we actually start this model at work?
+
+    A model absent from GitHub's Copilot pricing page is not on our board at all — that is
+    data, not opinion. `disabled` only carries what GitHub does sell us and the
+    organisation has switched off.
+    """
+    if not candidate.get("copilot"):
+        return NOT_IN_COPILOT
+    if any(in_family(candidate["key"], family) for family in disabled):
+        return NOT_ENABLED
+    return AVAILABLE
+
+
 def _swap_for_drift(pick: dict, pool: list[dict]) -> tuple[dict, dict | None]:
     """If the winner is drifting, take the nearest non-drifting model instead."""
     if not budget.drifting(pick):
@@ -366,16 +402,38 @@ def capture(db_path: str, cfg) -> bool:
     if not (cb_rows and ai_rows and cp_rows):
         return False  # an incomplete board has no verdict worth writing down
     view = build(
-        cb_rows, ai_rows, cp_rows, cfg, cfg.hidden_models, credit_usd=cp_meta.get("credit_usd")
+        cb_rows, ai_rows, cp_rows, cfg, cfg.disabled_models, credit_usd=cp_meta.get("credit_usd")
     )
     _, changed = db.archive_recommendation(db_path, _decision(view))
     return changed
 
 
-def build(cb_rows, ai_rows, cp_rows, cfg, hidden: list[str], credit_usd: float | None = None) -> dict:
+def build(
+    cb_rows,
+    ai_rows,
+    cp_rows,
+    cfg,
+    disabled: list[str],
+    credit_usd: float | None = None,
+    show_all: bool = False,
+) -> dict:
     candidates, copilot_only = merge(cb_rows, ai_rows, cp_rows)
-    hidden_set = {h.lower() for h in hidden}
-    visible = [c for c in candidates if c["key"].lower() not in hidden_set]
+
+    # Availability is only knowable while we hold GitHub's model list. On a cold start, or
+    # if that source ever fails before its first snapshot, an empty board would be a worse
+    # lie than an unfiltered one — so the filter stands down and the payload says so.
+    availability_known = bool(cp_rows)
+    for candidate in candidates:
+        state = availability(candidate, disabled) if availability_known else AVAILABLE
+        candidate["availability"] = state
+        candidate["available"] = state == AVAILABLE
+        candidate["unavailable_reason"] = AVAILABILITY_LABELS.get(state)
+
+    # The default board is what we can actually start today. Recommending a model nobody
+    # here can run is worse than recommending nothing: it reads as advice and cannot be
+    # taken. `show_all` opens the board so the cost of the restriction stays visible.
+    visible = candidates if show_all else [c for c in candidates if c["available"]]
+    excluded = [] if show_all else [c for c in candidates if not c["available"]]
     verdicts = pick_tiers(visible, cfg)
     rate = credit_usd or budget.CREDIT_USD_FALLBACK
     plans = budget.plans(cfg.tiers, visible, frontier(visible), rate, verdicts)
@@ -397,8 +455,10 @@ def build(cb_rows, ai_rows, cp_rows, cfg, hidden: list[str], credit_usd: float |
         "ladder": value_ladder(visible),
         "gaps": gaps(verdicts),
         "candidates": sorted(visible, key=lambda c: -c["score"]),
+        "excluded": sorted(excluded, key=lambda c: -c["score"]),
+        "availability_known": availability_known,
         "all_candidates_count": len(candidates),
-        "hidden_models": sorted(hidden_set),
+        "disabled_families": sorted({f.lower() for f in disabled}),
         "copilot_only": copilot_only,
         "thresholds": {
             "worker_max_cost_usd": cfg.worker_max_cost_usd,

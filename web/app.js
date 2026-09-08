@@ -761,7 +761,10 @@ function renderCopilot(view) {
   const body = $("#copilot tbody");
   body.innerHTML = "";
   const best = new Map();
-  view.candidates.forEach((candidate) => {
+  // Everything GitHub sells us belongs in this table, including the models the organisation
+  // has switched off — their price is a fact, and their absence from the verdict is a choice
+  // worth showing next to it.
+  [...view.candidates, ...(view.excluded || [])].forEach((candidate) => {
     if (!candidate.copilot) return;
     const current = best.get(candidate.key);
     if (!current || candidate.score > current.score) best.set(candidate.key, candidate);
@@ -777,6 +780,7 @@ function renderCopilot(view) {
       output: candidate.copilot.output_usd,
       score: candidate.score,
       effort: candidate.effort_label,
+      note: candidate.available === false ? candidate.unavailable_reason : null,
     });
   });
   view.copilot_only.forEach((model) => {
@@ -795,7 +799,9 @@ function renderCopilot(view) {
   rows.forEach((row) => {
     body.append(
       tag(`<tr>
-        <td>${escapeHtml(row.label)}</td>
+        <td>${escapeHtml(row.label)}${
+          row.note ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(row.note)}</span>` : ""
+        }</td>
         <td class="dim">${escapeHtml(row.category || "—")}</td>
         <td class="num">${usd(row.input)}</td>
         <td class="num dim">${usd(row.cached)}</td>
@@ -811,7 +817,7 @@ function renderCopilot(view) {
 function renderMethod(view) {
   const method = $("#method");
   const thresholds = view.thresholds;
-  const hidden = (view.hidden_by_config || []).join(", ");
+  const disabled = (view.disabled_by_config || []).join(", ");
   method.innerHTML = `
     <div>Cost, score, tokens and steps come from CursorBench ${escapeHtml(view.benchmark_version || "")} —
       always for the effort level named on the card. Drift comes from AI Stupid Level and acts as a
@@ -825,9 +831,11 @@ function renderMethod(view) {
     <div>The merit-only shortlist quoted for comparison ignores the budget entirely: architect
       ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
       worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.</div>
-    <div>Hidden from the default view because they are not enabled in the organisation's Copilot
-      subscription:
-      ${escapeHtml(hidden || "nothing")}. They are still collected and archived.</div>
+    <div>The board is limited to models we can actually start: a model has to appear on GitHub's
+      Copilot pricing page, and not be one this organisation has switched off
+      (${escapeHtml(disabled || "none")}). Anything else — a benchmark-only model, or one we do not
+      have — is collected and archived, but never recommended. The switch above the verdict opens
+      the full board so the cost of that restriction stays visible.</div>
     <div>Credits: 1 AI credit = $${view.credit_usd.toFixed(2)}, ${
       view.credit_usd_verified ? "read today from" : "assumed — not readable today in"
     } GitHub's pricing page${
@@ -884,7 +892,9 @@ async function load() {
 $("#toggle-all").addEventListener("click", (event) => {
   state.showAll = !state.showAll;
   event.currentTarget.setAttribute("aria-pressed", String(state.showAll));
-  event.currentTarget.textContent = state.showAll ? "Hide filtered models" : "Show hidden models";
+  event.currentTarget.textContent = state.showAll
+    ? "Only what we can run"
+    : "Show models we cannot run";
   load();
 });
 
