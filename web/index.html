@@ -153,8 +153,10 @@
     <div class="table-scroll">
       <table id="drift">
         <thead><tr>
-          <th>Model</th><th class="num">Score</th><th>7 days</th>
-          <th class="num">Δ7d</th><th class="num">min–max</th><th>Trend</th>
+          <th>Model</th><th class="num">Score</th><th data-nosort>7 days</th>
+          <th class="num" title="Our archive: seven days of runs, the first fifth against the last fifth">Δ7d</th>
+          <th class="num" title="Sorts by spread: how far the runs swing">min–max</th>
+          <th title="The source's own call on its recent window — a shorter one than Δ7d, so the two can disagree">Trend</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -173,7 +175,9 @@
       <table id="copilot">
         <thead><tr>
           <th>Model</th><th>Category</th><th class="num">Input / 1M</th>
-          <th class="num">Cached / 1M</th><th class="num">Output / 1M</th><th class="num">CursorBench</th>
+          <th class="num">Cached / 1M</th><th class="num">Output / 1M</th>
+          <th class="num" title="Credits for one CursorBench task at the effort shown on the right">Credits / task</th>
+          <th class="num">CursorBench</th>
         </tr></thead>
         <tbody></tbody>
       </table>

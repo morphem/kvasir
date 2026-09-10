@@ -161,6 +161,15 @@ th {
   white-space: nowrap; border-bottom: 1px solid var(--edge); position: sticky; top: 0;
 }
 th.num, td.num { text-align: right; }
+
+/* Sortable headers. The caret is the only chrome: it shows the column is live, and which
+   way it currently runs. */
+th[role="button"] { cursor: pointer; user-select: none; }
+th[role="button"]:hover { color: var(--text); }
+th[role="button"]:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; color: var(--text); }
+th[aria-sort]::after { content: "↕"; margin-left: 0.4em; opacity: 0.3; font-size: 0.9em; }
+th[aria-sort="ascending"]::after { content: "↑"; opacity: 1; color: var(--cyan); }
+th[aria-sort="descending"]::after { content: "↓"; opacity: 1; color: var(--cyan); }
 td { padding: 0.62rem 0.85rem; border-bottom: 1px solid rgba(34, 42, 61, 0.6); vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: rgba(20, 25, 38, 0.55); }

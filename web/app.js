@@ -697,6 +697,101 @@ function renderLadder(view) {
   });
 }
 
+/* ---------- sortable tables ----------
+
+   Two of the four tables on this page are data you scan; the other two carry an order that
+   means something (the task catalogue is grouped by role, the budget breakdown reads
+   architect-worker-scout) and sorting them would destroy the point. So this is opt-in.
+
+   Cells carry `data-sort` with the raw value, because the rendered text is formatted for
+   reading — "$0.075", "59–88", "+3.8" — and sorting the formatting gives nonsense. An empty
+   `data-sort` means "no value": those rows sink to the bottom in both directions, so
+   ascending by score never opens with a wall of models nobody benchmarked. */
+
+const SORT_STATE = {};
+
+// Copilot's own capability ladder, so the Category column sorts by weight rather than by
+// the accident of Lightweight coming before Powerful in the alphabet.
+const CATEGORY_RANK = { lightweight: 1, versatile: 2, powerful: 3 };
+
+function sortValue(cell) {
+  const raw = cell.dataset.sort;
+  if (raw === undefined) return cell.textContent.trim().toLowerCase();
+  if (raw === "") return null;
+  const num = Number(raw);
+  return Number.isNaN(num) ? raw.toLowerCase() : num;
+}
+
+function applySort(tableId) {
+  const table = document.getElementById(tableId);
+  const state = SORT_STATE[tableId];
+  if (!table || !state || !table.tBodies[0]) return;
+  const body = table.tBodies[0];
+  [...body.rows]
+    .sort((a, b) => {
+      const left = sortValue(a.cells[state.index]);
+      const right = sortValue(b.cells[state.index]);
+      if (left === null || right === null) return left === right ? 0 : left === null ? 1 : -1;
+      if (left === right) return 0;
+      return (left > right ? 1 : -1) * state.dir;
+    })
+    .forEach((row) => body.append(row));
+  [...table.tHead.rows[0].cells].forEach((th, index) => {
+    if (th.dataset.nosort !== undefined) return;
+    th.setAttribute(
+      "aria-sort",
+      index === state.index ? (state.dir === 1 ? "ascending" : "descending") : "none"
+    );
+  });
+}
+
+function makeSortable(tableId, fallback) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  if (!SORT_STATE[tableId] && fallback) SORT_STATE[tableId] = fallback;
+  if (!table.dataset.sortable) {
+    table.dataset.sortable = "1";
+    [...table.tHead.rows[0].cells].forEach((th, index) => {
+      if (th.dataset.nosort !== undefined) return;
+      th.tabIndex = 0;
+      th.setAttribute("role", "button");
+      th.setAttribute("aria-sort", "none");
+      const toggle = () => {
+        const current = SORT_STATE[tableId];
+        // Numbers open large-first, names open A-Z: the useful end of each, first click.
+        const dir =
+          current && current.index === index ? -current.dir : th.classList.contains("num") ? -1 : 1;
+        SORT_STATE[tableId] = { index, dir };
+        applySort(tableId);
+      };
+      th.addEventListener("click", toggle);
+      th.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      });
+    });
+  }
+  applySort(tableId);
+}
+
+/* Which role, if any, this model fills at the selected tier — the line back from a table of
+   numbers to the decision the page exists to make. */
+function roleChips(key) {
+  const current = plan();
+  if (!current || !current.roles) return "";
+  return Object.entries(current.roles)
+    .filter(([, slot]) => slot.pick && slot.pick.key === key)
+    .map(([role]) => {
+      const tier = (state.view.tiers || []).find((t) => t.id === role);
+      return tier
+        ? `<span class="tier-chip ${tier.accent}" style="margin-left:.4rem">${escapeHtml(tier.name)}</span>`
+        : "";
+    })
+    .join("");
+}
+
 /* ---------- drift ---------- */
 
 function sparkline(points, delta) {
@@ -768,25 +863,52 @@ function renderDrift(drift, history, source) {
   }
   const body = $("#drift tbody");
   body.innerHTML = "";
+
+  // A model can look excellent here and still be unusable at work. Saying so in the row
+  // stops the table from arguing for a model the verdict is not allowed to pick.
+  const view = state.view || {};
+  const offBoard = new Map((view.excluded || []).map((c) => [c.key, c.unavailable_reason]));
+  // Anything Copilot sells, benchmarked or not. A drift row in neither list is a model this
+  // page cannot put to work at all — retired from Copilot, or never carried.
+  const sold = new Set([
+    ...(view.candidates || []).map((c) => c.key),
+    ...(view.excluded || []).filter((c) => c.copilot).map((c) => c.key),
+    ...(view.copilot_only || []).map((c) => c.key),
+  ]);
+
   drift.forEach((row) => {
     const arrow = row.trend === "up" ? "↑ rising" : row.trend === "down" ? "↓ falling" : "→ steady";
+    const trendRank = row.trend === "up" ? 1 : row.trend === "down" ? -1 : 0;
     const cls = row.trend === "down" ? "violet" : row.trend === "up" ? "cyan" : "dim";
     const delta =
       row.delta_7d === null || row.delta_7d === undefined
         ? "—"
         : `${row.delta_7d > 0 ? "+" : ""}${row.delta_7d}`;
     const deltaCls = row.delta_7d < 0 ? "violet" : row.delta_7d > 0 ? "cyan" : "dim";
+    const spread =
+      row.min_7d === null || row.min_7d === undefined || row.max_7d === null || row.max_7d === undefined
+        ? ""
+        : row.max_7d - row.min_7d;
+    const reason = offBoard.get(row.key) || (sold.has(row.key) ? null : "not in Copilot");
+    const marks = [
+      row.stale ? "· not refreshed" : "",
+      reason ? `· ${reason}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     body.append(
       tag(`<tr>
-        <td>${escapeHtml(row.label)} ${row.stale ? '<span class="dim mono" style="font-size:.68rem">· not refreshed</span>' : ""}</td>
-        <td class="num"><b>${row.score === null ? "—" : Math.round(row.score)}</b></td>
-        <td>${sparkline(row.points, row.delta_7d)}</td>
-        <td class="num ${deltaCls}">${delta}</td>
-        <td class="num dim">${row.min_7d ?? "—"}–${row.max_7d ?? "—"}</td>
-        <td class="${cls} mono" style="font-size:.78rem">${arrow}</td>
+        <td data-sort="${escapeHtml(row.label)}">${escapeHtml(row.label)}${roleChips(row.key)}
+          ${marks ? `<span class="dim mono" style="font-size:.68rem"> ${escapeHtml(marks)}</span>` : ""}</td>
+        <td class="num" data-sort="${row.score ?? ""}"><b>${row.score === null ? "—" : Math.round(row.score)}</b></td>
+        <td data-nosort>${sparkline(row.points, row.delta_7d)}</td>
+        <td class="num ${deltaCls}" data-sort="${row.delta_7d ?? ""}">${delta}</td>
+        <td class="num dim" data-sort="${spread}">${row.min_7d ?? "—"}–${row.max_7d ?? "—"}</td>
+        <td class="${cls} mono" style="font-size:.78rem" data-sort="${trendRank}">${arrow}</td>
       </tr>`)
     );
   });
+  makeSortable("drift", { index: 1, dir: -1 });
 }
 
 /* ---------- copilot pricing ---------- */
@@ -805,8 +927,10 @@ function renderCopilot(view) {
   });
 
   const rows = [];
+  const rate = view.credit_usd || 0.01;
   best.forEach((candidate) => {
     rows.push({
+      key: candidate.key,
       label: candidate.label.split(" · ")[0],
       category: candidate.copilot.category,
       input: candidate.copilot.input_usd,
@@ -814,11 +938,15 @@ function renderCopilot(view) {
       output: candidate.copilot.output_usd,
       score: candidate.score,
       effort: candidate.effort_label,
+      // What a task on this model actually costs out of the tier — the per-million rates
+      // beside it are a rate, not a bill.
+      taskCredits: candidate.cost_usd ? Math.round(candidate.cost_usd / rate) : null,
       note: candidate.available === false ? candidate.unavailable_reason : null,
     });
   });
   view.copilot_only.forEach((model) => {
     rows.push({
+      key: model.key,
       label: model.label,
       category: model.category,
       input: model.input_usd,
@@ -826,6 +954,7 @@ function renderCopilot(view) {
       output: model.output_usd,
       score: null,
       effort: null,
+      taskCredits: null,
     });
   });
   rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.input ?? 0) - (b.input ?? 0));
@@ -833,17 +962,21 @@ function renderCopilot(view) {
   rows.forEach((row) => {
     body.append(
       tag(`<tr>
-        <td>${escapeHtml(row.label)}${
+        <td data-sort="${escapeHtml(row.label)}">${escapeHtml(row.label)}${roleChips(row.key)}${
           row.note ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(row.note)}</span>` : ""
         }</td>
-        <td class="dim">${escapeHtml(row.category || "—")}</td>
-        <td class="num">${usd(row.input)}</td>
-        <td class="num dim">${usd(row.cached)}</td>
-        <td class="num">${usd(row.output)}</td>
-        <td class="num">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
+        <td class="dim" data-sort="${CATEGORY_RANK[(row.category || "").toLowerCase()] ?? ""}">${escapeHtml(row.category || "—")}</td>
+        <td class="num" data-sort="${row.input ?? ""}">${usd(row.input)}</td>
+        <td class="num dim" data-sort="${row.cached ?? ""}">${usd(row.cached)}</td>
+        <td class="num" data-sort="${row.output ?? ""}">${usd(row.output)}</td>
+        <td class="num" data-sort="${row.taskCredits ?? ""}">${
+          row.taskCredits === null ? "—" : credits(row.taskCredits)
+        }</td>
+        <td class="num" data-sort="${row.score ?? ""}">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
       </tr>`)
     );
   });
+  makeSortable("copilot", { index: 6, dir: -1 });
 }
 
 /* ---------- footer ---------- */
