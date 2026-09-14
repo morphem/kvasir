@@ -402,3 +402,51 @@ footer a:hover { color: var(--text); }
 .budget-bar span.tight { background: var(--amber); }
 .budget-bar span.over { background: var(--violet); }
 #budget-title { margin-top: 0.35rem; }
+
+/* ---- card property sheet ----
+   Fixed rows in a fixed order, so three cards read as three columns of the same table and
+   the eye can run across them. A missing value keeps its row: a gap is what breaks the
+   scan. */
+.props {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.34rem 0.9rem;
+  margin: auto 0 0;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--edge);
+  font-size: 0.82rem;
+}
+.props dt {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  align-self: center;
+  white-space: nowrap;
+}
+.props dd {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-variant-numeric: tabular-nums;
+}
+.props dd .val { flex: 1; min-width: 0; }
+.props dd b { font-weight: 600; font-family: var(--mono); }
+
+/* The one piece of ornament on the card, and it carries the thing the page could not say
+   before: how fast it types, and how long you sit there. */
+.meter {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  width: 72px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(139, 151, 168, 0.18);
+  overflow: hidden;
+}
+.meter i { display: block; height: 100%; border-radius: 999px; }
+.meter .cyan-fill { background: var(--cyan); }
+.meter .violet-fill { background: var(--violet); }

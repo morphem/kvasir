@@ -255,6 +255,14 @@ function copilotBadge(copilot) {
 }
 
 function renderVerdicts(view) {
+  // Bars are only readable against a common scale, and the board is the honest one: the
+  // fastest model on it sets full width, the longest wait sets the other.
+  const measured = view.candidates.map((c) => c.speed).filter(Boolean);
+  view._scales = {
+    speed: Math.max(1, ...measured.map((s) => s.tokens_per_second || 0)),
+    wait: Math.max(1, ...measured.map((s) => s.first_answer_seconds || 0)),
+  };
+
   const box = $("#verdicts");
   const current = plan();
   box.innerHTML = "";
@@ -306,10 +314,7 @@ function renderVerdicts(view) {
         </div>
         <p class="why">${escapeHtml(slot.why || "")}</p>
         ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
-        <div class="badges">${driftBadge(pick.drift)}${copilotBadge(pick.copilot)}
-          <span class="badge">${usd(pick.cost_usd)} / task</span>
-          <span class="badge">${pick.steps} steps</span>
-          ${speedBadges(pick.speed)}</div>
+        ${propertyRows(pick, view)}
       </article>`)
     );
   });
@@ -353,25 +358,67 @@ function renderBenchmarkNote(view) {
     `model this suite has not re-run shows as "not benchmarked" until it does.`;
 }
 
-/* Two different clocks, and the difference is the whole point: tokens per second is how
-   fast it types, the wait is how long you sit there before it starts. A model can be quick
-   on the first and unbearable on the second. */
-function speedBadges(speed) {
-  if (!speed) return '<span class="badge">speed not measured</span>';
-  const out = [];
-  if (speed.tokens_per_second) {
-    out.push(`<span class="badge ok">${Math.round(speed.tokens_per_second)} tok/s</span>`);
-  }
-  if (speed.first_answer_seconds) {
-    const slow = speed.first_answer_seconds >= 20;
-    out.push(
-      `<span class="badge ${slow ? "warn" : "ok"}">${speed.first_answer_seconds}s to first answer</span>`
-    );
-  }
-  if (speed.end_to_end_seconds) {
-    out.push(`<span class="badge">${speed.end_to_end_seconds}s per 500 tokens</span>`);
-  }
-  return out.join("") || '<span class="badge">speed not measured</span>';
+/* The card foot is a property sheet, not a bag of chips.
+
+   Chips wrapped differently in every card — two lines here, one there — so nothing lined up
+   and two models could not be read against each other. These rows are fixed in number and
+   order, and a missing value keeps its row, because an absent line is what breaks a column
+   scan. The two bars are the only ornament, and they carry the one thing this page could
+   not say until now: how long you sit there. */
+function bar(fraction, tone) {
+  const width = Math.max(2, Math.min(100, Math.round(fraction * 100)));
+  return `<span class="meter"><i class="${tone}" style="width:${width}%"></i></span>`;
+}
+
+function propertyRows(pick, view) {
+  const speed = pick.speed || {};
+  const scales = view._scales || { speed: 1, wait: 1 };
+  const drift = pick.drift;
+  const copilot = pick.copilot;
+
+  const rows = [
+    speed.tokens_per_second
+      ? [
+          "types",
+          `<b class="cyan">${Math.round(speed.tokens_per_second)}</b> tok/s`,
+          bar(speed.tokens_per_second / scales.speed, "cyan-fill"),
+        ]
+      : ["types", '<span class="dim">not measured</span>', ""],
+    speed.first_answer_seconds
+      ? [
+          "you wait",
+          `<b>${speed.first_answer_seconds}s</b> to first answer`,
+          bar(speed.first_answer_seconds / scales.wait, "violet-fill"),
+        ]
+      : ["you wait", '<span class="dim">not measured</span>', ""],
+    speed.end_to_end_seconds
+      ? ["one answer", `${speed.end_to_end_seconds}s per 500 tokens`, ""]
+      : ["one answer", '<span class="dim">not measured</span>', ""],
+    [
+      "drift",
+      drift && drift.score !== null
+        ? `${Math.round(drift.score)} · ${
+            drift.trend === "up" ? "rising" : drift.trend === "down" ? "falling" : "steady"
+          }`
+        : '<span class="dim">not tracked</span>',
+      "",
+    ],
+    ["per task", `${usd(pick.cost_usd)} · ${pick.steps} steps`, ""],
+    [
+      "copilot",
+      copilot
+        ? `$${copilot.input_usd} / $${copilot.output_usd} per 1M`
+        : '<span class="dim">not sold to us</span>',
+      "",
+    ],
+  ];
+
+  return `<dl class="props">${rows
+    .map(
+      ([label, value, meter]) =>
+        `<dt>${label}</dt><dd><span class="val">${value}</span>${meter}</dd>`
+    )
+    .join("")}</dl>`;
 }
 
 /* ---------- monthly budget ---------- */
@@ -843,11 +890,14 @@ function makeSortable(tableId, fallback) {
 
 /* Which role, if any, this model fills at the selected tier — the line back from a table of
    numbers to the decision the page exists to make. */
-function roleChips(key) {
+function roleChips(key, effort) {
   const current = plan();
   if (!current || !current.roles) return "";
   return Object.entries(current.roles)
-    .filter(([, slot]) => slot.pick && slot.pick.key === key)
+    .filter(
+      ([, slot]) =>
+        slot.pick && slot.pick.key === key && (effort === undefined || slot.pick.effort === effort)
+    )
     .map(([role]) => {
       const tier = (state.view.tiers || []).find((t) => t.id === role);
       return tier
@@ -974,6 +1024,79 @@ function renderDrift(drift, history, source) {
     );
   });
   makeSortable("drift", { index: 1, dir: -1 });
+}
+
+/* ---------- what it feels like to work with ----------
+
+   Every timed variant, not just the three the verdict picked, because the interesting fact
+   lives between efforts of one model rather than between models. The bar is the whole point
+   of the table: a number in seconds is abstract, a bar you can compare down a column is not. */
+
+function renderFeel(view) {
+  const body = $("#feel tbody");
+  if (!body) return;
+  body.innerHTML = "";
+
+  const seen = new Map();
+  [...view.candidates, ...(view.excluded || [])].forEach((candidate) => {
+    const speed = candidate.speed;
+    if (!speed || (!speed.first_answer_seconds && !speed.tokens_per_second)) return;
+    const id = `${candidate.key}|${candidate.effort}`;
+    if (!seen.has(id)) seen.set(id, candidate);
+  });
+
+  const rows = [...seen.values()];
+  const worst = Math.max(1, ...rows.map((c) => c.speed.first_answer_seconds || 0));
+  rows.sort((a, b) => (a.speed.first_answer_seconds || 1e9) - (b.speed.first_answer_seconds || 1e9));
+
+  rows.forEach((candidate) => {
+    const speed = candidate.speed;
+    const wait = speed.first_answer_seconds;
+    // Under ten seconds you keep working; past half a minute you have gone to make coffee.
+    const feel = !wait
+      ? ""
+      : wait < 10
+      ? "answers while you watch"
+      : wait < 25
+      ? "a pause, then it goes"
+      : "you will look away";
+    body.append(
+      tag(`<tr>
+        <td data-sort="${escapeHtml(candidate.label)}">${escapeHtml(candidate.label)}${roleChips(candidate.key, candidate.effort)}${
+          candidate.available === false
+            ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(candidate.unavailable_reason)}</span>`
+            : ""
+        }</td>
+        <td class="num" data-sort="${wait ?? ""}">${wait ? `${wait}s` : "—"}</td>
+        <td data-nosort>${
+          wait
+            ? `${bar(wait / worst, "violet-fill")}<span class="dim" style="font-size:.78rem;margin-left:.5rem">${feel}</span>`
+            : '<span class="dim" style="font-size:.78rem">not measured</span>'
+        }</td>
+        <td class="num" data-sort="${speed.end_to_end_seconds ?? ""}">${
+          speed.end_to_end_seconds ? `${speed.end_to_end_seconds}s` : "—"
+        }</td>
+        <td class="num" data-sort="${speed.tokens_per_second ?? ""}">${
+          speed.tokens_per_second ? Math.round(speed.tokens_per_second) : "—"
+        }</td>
+        <td class="num" data-sort="${candidate.score}">${pct(candidate.score)}</td>
+        <td class="num" data-sort="${candidate.cost_usd ?? ""}">${
+          candidate.cost_usd ? credits(candidate.cost_usd / (view.credit_usd || 0.01)) : "—"
+        }</td>
+      </tr>`)
+    );
+  });
+
+  const note = $("#feel-note");
+  if (note) {
+    const timed = rows.length;
+    const board = new Set(view.candidates.map((c) => `${c.key}|${c.effort}`)).size;
+    note.textContent =
+      `${timed} of the ${board} variants on the board are timed by Artificial Analysis, on their own ` +
+      `hardware. A variant with no row here is not slow — nobody has measured it. Waiting time is ` +
+      `per effort and never carried across; typing speed belongs to the model, so it is.`;
+  }
+  makeSortable("feel", { index: 1, dir: 1 });
 }
 
 /* ---------- copilot pricing ---------- */
@@ -1109,6 +1232,7 @@ function renderAll() {
   /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
   renderChartDetail();
   renderDrift(view.drift, view.drift_history, view.sources && view.sources.stupidlevel);
+  renderFeel(view);
   renderCopilot(view);
   renderMethod(view);
 }
