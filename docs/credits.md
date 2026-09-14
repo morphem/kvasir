@@ -52,9 +52,26 @@ own result (`kvasir/budget.py`):
 | Overhead | ×1.15 | chat, follow-ups and retries are billed but are not benchmark-shaped tasks |
 | Budget split | 35% architect · 45% worker · 20% scout | planning is the smallest slice of tasks and the largest slice of value |
 
-A "task" is a CursorBench task: a real, ambiguous, multi-file request, 20–100 agent steps. That is
-a heavier unit than a chat question, which is why the overhead factor exists rather than a second
-made-up task type.
+A "task" is a CursorBench task: a real, ambiguous, multi-file request. That is a heavier unit than
+a chat question, which is why the overhead factor exists rather than a second made-up task type.
+
+**The unit grew on 2026-09-10.** CursorBench 4.0 added long-horizon problems, and a task is now
+roughly twice the work it was under 3.2 — measured across the models present in both suites, steps
+per task rose about 70% (Opus 5 · Max 78 → 106, GPT-5.6 Luna · Max 61 → 208) and cost per task rose
+between 10% and 160%. Scores fell with it: the top of the board went from 70.8% to 51.8%.
+
+Two consequences, neither of them a reason to re-tune the constants above:
+
+1. **Six tasks a day is now a heavier month than it was**, so the estimate became more conservative
+   without anyone deciding that. It is still the same explicit model, and it is still printed next
+   to its answer — but a projection made before 10 September and one made after are not measuring
+   the same month.
+2. **The verdict moved down the ladder on its own**, because per-task prices roughly doubled while
+   the tiers did not. That is the engine working: at Heavy the worker went from GPT-5.6 Terra · Max
+   to GPT-5.6 Luna · Max, and the monthly projection stayed near 27–31k credits.
+
+If the real workload is ever measured from Copilot's usage metrics, replace the model — do not
+adjust `TASKS_PER_DAY` to keep the old number looking familiar across a benchmark re-baselining.
 
 ## How each role is filled
 
