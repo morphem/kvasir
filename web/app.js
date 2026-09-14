@@ -3,6 +3,21 @@
    parses in a blink, and the SVG here is simpler than the config a chart library would need. */
 
 const TIER_STORAGE_KEY = "kvasir.tier";
+const PANEL_STORAGE_KEY = "kvasir.panel";
+
+/* The page grew past the point where scrolling is navigation: seven sections of tables, and
+   the one you want is always the fourth or the fifth. The verdict stays pinned above — it is
+   the reason the page exists — and everything below it becomes one switchable panel, so a
+   question like "what do all the Opus variants wait" is a click rather than a hunt. */
+const PANELS = [
+  { id: "tasks", label: "Task → agent" },
+  { id: "budget", label: "Month on this tier" },
+  { id: "value", label: "Where value sits" },
+  { id: "timing", label: "How it feels" },
+  { id: "drift", label: "Drift" },
+  { id: "copilot", label: "Copilot prices" },
+  { id: "method", label: "Method" },
+];
 const state = {
   view: null,
   showAll: false,
@@ -38,6 +53,59 @@ function storeTier(id) {
   } catch {
     /* private browsing: the switch still works, it just forgets between visits */
   }
+}
+
+function storedPanel() {
+  const fromHash = (location.hash || "").replace("#", "");
+  if (PANELS.some((panel) => panel.id === fromHash)) return fromHash;
+  try {
+    return localStorage.getItem(PANEL_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function showPanel(id, { scroll = false } = {}) {
+  const known = PANELS.some((panel) => panel.id === id) ? id : PANELS[0].id;
+  state.panel = known;
+  try {
+    localStorage.setItem(PANEL_STORAGE_KEY, known);
+  } catch {
+    /* private browsing: the switch works, it just forgets */
+  }
+  if (location.hash !== `#${known}`) history.replaceState(null, "", `#${known}`);
+
+  // Scoped to sections on purpose: the tab buttons carry the same attribute, and an
+  // unscoped query hid six of the seven switches it had just drawn.
+  document.querySelectorAll("section[data-panel]").forEach((section) => {
+    section.hidden = section.dataset.panel !== known;
+  });
+  document.querySelectorAll("#section-tabs .tab").forEach((tab) => {
+    tab.setAttribute("aria-selected", String(tab.dataset.panel === known));
+  });
+
+  // Only pull the page up when the tab strip has scrolled out of sight — switching while
+  // the verdict is on screen should not move anything.
+  const tabs = $("#section-tabs");
+  if (scroll && tabs && tabs.getBoundingClientRect().top < 0) {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    tabs.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  }
+}
+
+function renderTabs() {
+  const box = $("#section-tabs");
+  if (!box || box.dataset.ready) return;
+  box.dataset.ready = "1";
+  PANELS.forEach((panel) => {
+    const tab = tag(
+      `<button class="tab" role="tab" data-panel="${panel.id}" aria-selected="false">${escapeHtml(
+        panel.label
+      )}</button>`
+    );
+    tab.addEventListener("click", () => showPanel(panel.id, { scroll: true }));
+    box.append(tab);
+  });
 }
 
 function plan() {
@@ -202,9 +270,10 @@ function renderFreshness(sources) {
         : `every ${source.interval_minutes} min`;
     const due = until(source.next_run) || every;
     box.append(
-      tag(`<a class="chip" href="${escapeHtml(source.url)}" target="_blank" rel="noopener">
+      tag(`<a class="chip" href="${escapeHtml(source.url)}" target="_blank" rel="noopener"
+             title="${escapeHtml(source.label)} — last change ${escapeHtml(ago(source.captured_at))}, ${escapeHtml(due)}, polled ${every}">
              <i class="dot ${dot}"></i>${escapeHtml(source.label)}
-             <b class="dim" style="font-weight:400">${escapeHtml(ago(source.captured_at))} · ${escapeHtml(due)}</b>
+             <b class="dim" style="font-weight:400">${escapeHtml(ago(source.captured_at))}</b>
            </a>`)
     );
   });
@@ -231,13 +300,10 @@ function renderTierTabs(view) {
   });
 
   const current = plan();
-  const quote = view.credit_usd_verified
-    ? `1 AI credit = $${view.credit_usd.toFixed(2)}, taken from GitHub's own pricing page`
-    : `1 AI credit assumed at $${view.credit_usd.toFixed(2)} — the rate could not be read from the docs today`;
+  // The provenance of the credit rate is a method question, not a header one.
   $("#tier-note").textContent = current
-    ? `Showing what the ${current.name} tier affords: ${num(current.credits)} credits a month, ` +
-      `about $${num(current.usd)}. ${quote}.`
-    : quote;
+    ? `${num(current.credits)} credits a month · about $${num(current.usd)}`
+    : "";
 }
 
 /* ---------- verdict cards ---------- */
@@ -321,11 +387,11 @@ function renderVerdicts(view) {
 
   renderBenchmarkNote(view);
 
-  const thresholds = view.thresholds;
-  $("#verdict-sub").textContent =
-    `Filled under this tier's monthly credit budget. Architect: the best model its share affords. ` +
-    `Worker: upgrades while they cost at most $${thresholds.steep_usd_per_pp.toFixed(2)} per point. ` +
-    `Scout: bargain upgrades only, at most $${thresholds.bargain_usd_per_pp.toFixed(2)} per point.`;
+  const tier = plan();
+  $("#verdict-sub").textContent = tier
+    ? `Filled inside the ${tier.name} tier's monthly budget — ${tier.used_pct}% of it planned, ` +
+      `about $${num(tier.month_usd)} a month.`
+    : "";
 }
 
 /* A re-baselined benchmark is the single change most likely to make this page look broken:
@@ -352,10 +418,9 @@ function renderBenchmarkNote(view) {
   const top = Math.max(...view.candidates.map((candidate) => candidate.score));
   note.textContent =
     `CursorBench ${current.version} replaced ${previous.version} on ` +
-    `${since.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: a new suite, ` +
-    `covering ${models} models instead of the previous set, and the best score on our board ` +
-    `is now ${top.toFixed(1)}%. Scores either side of that date are not the same measurement, and a ` +
-    `model this suite has not re-run shows as "not benchmarked" until it does.`;
+    `${since.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — ${models} models ` +
+    `re-run, top score now ${top.toFixed(1)}%, and scores either side of that date are not the ` +
+    `same measurement.`;
 }
 
 /* The card foot is a property sheet, not a bag of chips.
@@ -1221,6 +1286,7 @@ function renderMethod(view) {
 function renderAll() {
   const view = state.view;
   if (!view) return;
+  renderTabs();
   const current = plan();
   renderTierTabs(view);
   renderFreshness(view.sources);
@@ -1237,6 +1303,7 @@ function renderAll() {
   renderFeel(view);
   renderCopilot(view);
   renderMethod(view);
+  showPanel(state.panel || storedPanel() || PANELS[0].id);
 }
 
 async function load() {

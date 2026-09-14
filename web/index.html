@@ -12,59 +12,46 @@
 <body>
 <div class="wrap">
 
-  <header>
-    <div class="wordmark"><span>blink</span><b>neuron</b></div>
-    <h1 style="margin-top:.7rem">
-      <span class="gloss" tabindex="0" role="note" aria-describedby="kvasir-myth">Kvasir<span class="gloss-mark">?</span>
+  <header class="topbar">
+    <div class="identity">
+      <div class="wordmark"><span>blink</span><b>neuron</b></div>
+      <h1><span class="gloss" tabindex="0" role="note" aria-describedby="kvasir-myth">Kvasir<span class="gloss-mark">?</span>
         <span class="gloss-card" id="kvasir-myth">
           <b>Kvasir</b> — in Norse myth, a being made out of the mixed knowledge of two warring
           tribes of gods: the wisest thing alive, and the one you went to for counsel. Later killed
           for it, and brewed into the mead of poetry.
           <i>This page mixes three sources and answers one question. Same idea, fewer casualties.</i>
         </span>
-      </span>
-    </h1>
-    <div class="header-grid">
-      <p class="lede">
-        Three sources in one place, and one answer to the only question that matters at the start of
-        a task: <b>which agent do I run</b>. Cost per task from <b>CursorBench</b>, quality drift from
-        <b>AI Stupid Level</b>, availability and price from <b>GitHub Copilot</b>. The effort level is
-        always named — without it a benchmark number means nothing.
-      </p>
-      <div class="key">
-        <div class="eyebrow">How to read it</div>
-        <p><i class="swatch cyan-bg"></i><b>Cyan</b> — the numbers line up. Take it.</p>
-        <p><i class="swatch violet-bg"></i><b>Violet</b> — a gap. You are paying a lot for a little.</p>
-        <p><i class="swatch dim-bg"></i><b>Effort</b> — always named on the model, never implied.</p>
-      </div>
+      </span></h1>
+      <p class="tagline">Which agent to start, from four live sources.</p>
     </div>
-    <div class="freshness" id="freshness"></div>
-  </header>
-
-  <div class="tier-bar">
-    <div class="tier-bar-text">
+    <div class="topbar-right">
       <div class="eyebrow">Organisation AI credits tier</div>
+      <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
       <p id="tier-note"></p>
     </div>
-    <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
-  </div>
+  </header>
+
+  <div class="freshness" id="freshness"></div>
+
 
   <section id="verdicts-section">
-    <div class="section-head">
+    <div class="section-head tight">
       <div>
         <div class="eyebrow">Today's verdict</div>
-        <h2>Three roles, three models</h2>
         <p id="verdict-sub"></p>
-        <p class="note" id="benchmark-note" hidden></p>
       </div>
       <div class="controls">
         <button class="toggle" id="toggle-all" aria-pressed="false">Show models we cannot run</button>
       </div>
     </div>
+    <p class="note" id="benchmark-note" hidden></p>
     <div class="verdicts" id="verdicts"></div>
   </section>
 
-  <section id="budget-section">
+  <nav class="tabs" id="section-tabs" role="tablist" aria-label="Sections"></nav>
+
+  <section id="budget-section" data-panel="budget">
     <div class="eyebrow">A month on this tier</div>
     <h2 id="budget-title"></h2>
     <p class="dim" id="budget-verdict" style="margin:.5rem 0 0;max-width:80ch"></p>
@@ -81,7 +68,7 @@
     <p class="dim" id="budget-assumptions" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
-  <section>
+  <section data-panel="value">
     <div class="eyebrow">Is the upgrade worth it</div>
     <h2>The distance between roles</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -91,7 +78,7 @@
     <div class="gaps" id="gaps"></div>
   </section>
 
-  <section>
+  <section data-panel="tasks">
     <div class="eyebrow">Quick pick</div>
     <h2>Task → agent</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -109,7 +96,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-panel="value">
     <div class="section-head">
       <div>
         <div class="eyebrow">Cost vs quality</div>
@@ -138,7 +125,7 @@
     <div class="ladder" id="ladder"></div>
   </section>
 
-  <section>
+  <section data-panel="drift">
     <div class="eyebrow">AI Stupid Level</div>
     <h2>Model drift over time</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -164,7 +151,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-panel="timing">
     <div class="eyebrow">Artificial Analysis</div>
     <h2>What it feels like to work with</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:74ch">
@@ -189,7 +176,7 @@
     <p class="dim" id="feel-note" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
-  <section>
+  <section data-panel="copilot">
     <div class="eyebrow">GitHub Copilot</div>
     <h2>What our Copilot enables, and what it costs</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -213,9 +200,18 @@
     </div>
   </section>
 
-  <footer>
+  <section data-panel="method">
     <div class="eyebrow">How the verdict is computed</div>
+    <h2>Method, and what the colours mean</h2>
+    <div class="key" style="margin:1.2rem 0 0;border:0;padding:0">
+      <p><i class="swatch cyan-bg"></i><b>Cyan</b> — the numbers line up. Take it.</p>
+      <p><i class="swatch violet-bg"></i><b>Violet</b> — a gap. You are paying a lot for a little.</p>
+      <p><i class="swatch dim-bg"></i><b>Effort</b> — always named on the model, never implied.</p>
+    </div>
     <div class="method" id="method"></div>
+  </section>
+
+  <footer>
     <div id="archive"></div>
     <p class="dim" style="font-size:.85rem;margin:1.2rem 0 0">
       Built for internal use inside one organisation — the model list mirrors what its Copilot

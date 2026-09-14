@@ -164,38 +164,24 @@ def _why(
     speed_blocked: dict | None = None,
 ) -> str:
     """Why this model, in this role, at this tier — in the terms the budget is managed in."""
-    price = f"{per_task:.0f} credits a task"
+    # Terse on purpose. The card is read at a glance and the rules are spelled out in the
+    # method panel; four sentences of reasoning per card pushed the verdict below the fold.
+    price = f"{per_task:.0f} cr/task"
     if role == "architect":
-        base = (
-            f"Best model this tier's planning share affords: {price} against a "
-            f"{per_task_budget:.0f}-credit ceiling, {tasks:g} planning tasks a month."
-        )
+        base = f"Best the planning share affords: {price}, ceiling {per_task_budget:.0f}."
     elif role == "worker":
-        base = (
-            f"Climbs the value ladder while each step costs at most ${FAIR_USD_PER_PP:.2f} per "
-            f"point and stays under {per_task_budget:.0f} credits a task. Lands at {price}."
-        )
+        base = f"Climbs while a point costs at most ${FAIR_USD_PER_PP:.2f}. Lands at {price}."
     else:
-        base = (
-            f"Takes only bargain upgrades (at most ${BARGAIN_USD_PER_PP:.2f} per point) — mechanical "
-            f"work does not repay more. {price}."
-        )
+        base = f"Bargain upgrades only, ${BARGAIN_USD_PER_PP:.2f} a point at most. {price}."
     if upgraded_from:
-        base += (
-            f" Bought up from {upgraded_from} with the tier's unused credits: this plan aims to "
-            f"use {int(TARGET_UTILISATION * 100)}% of the allowance rather than hand it back."
-        )
+        base += f" Bought up from {upgraded_from} with the tier's unused credits."
     if speed_blocked:
         base += (
-            f" Not {speed_blocked['label']} despite its {speed_blocked['score']:.1f}%: it runs at "
-            f"{speed_blocked['tokens_per_second']:.0f} tokens a second, under the "
-            f"{SPEED_FLOOR_TPS:.0f} this role needs to be worth waiting on."
+            f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}%): "
+            f"{speed_blocked['tokens_per_second']:.0f} tok/s, under the {SPEED_FLOOR_TPS:.0f} floor."
         )
     if drift_replaced:
-        base += (
-            f" Not {drift_replaced['label']}: that one is sliding on AI Stupid Level, and the "
-            "swap costs almost nothing."
-        )
+        base += f" Not {drift_replaced['label']} — sliding on AI Stupid Level."
     return base
 
 
