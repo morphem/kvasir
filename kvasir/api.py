@@ -113,6 +113,7 @@ def _sources_block() -> dict:
             "snapshots": entry.get("snapshots", 0),
             "runs": entry.get("runs", 0),
             "failures": entry.get("failures", 0),
+            "failing": bool(entry.get("failing")),
             "last_error": entry.get("last_error"),
             "meta": {k: v for k, v in meta.items() if k not in {"payload_hash", "snapshot_id"}},
         }

@@ -48,6 +48,7 @@ def test_view_is_one_consistent_payload():
     for source in body["sources"].values():
         assert source["url"].startswith("https://")
         assert source["interval_minutes"] > 0
+        assert source["failing"] is False  # the page reads health from the payload, not a guess
 
 
 def test_unavailable_models_can_be_shown_on_demand():
