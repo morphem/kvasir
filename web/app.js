@@ -1089,12 +1089,14 @@ function renderFeel(view) {
 
   const note = $("#feel-note");
   if (note) {
-    const timed = rows.length;
-    const board = new Set(view.candidates.map((c) => `${c.key}|${c.effort}`)).size;
+    const waited = rows.filter((c) => c.speed.first_answer_seconds).length;
+    const offBoard = rows.filter((c) => c.available === false).length;
     note.textContent =
-      `${timed} of the ${board} variants on the board are timed by Artificial Analysis, on their own ` +
-      `hardware. A variant with no row here is not slow — nobody has measured it. Waiting time is ` +
-      `per effort and never carried across; typing speed belongs to the model, so it is.`;
+      `${rows.length} variants carry a measurement from Artificial Analysis, taken on their own ` +
+      `hardware; ${waited} of them a waiting time, the rest only a typing speed. ${offBoard} are ` +
+      `off our board and kept here for comparison. A variant missing from this table is not slow — ` +
+      `nobody has timed it. Waiting time is per effort and never carried across efforts; typing ` +
+      `speed belongs to the model, so it is.`;
   }
   makeSortable("feel", { index: 1, dir: 1 });
 }
