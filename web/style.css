@@ -124,13 +124,25 @@ section { margin-top: 3.4rem; }
 }
 .role-line { font-size: 0.82rem; color: var(--dim); text-align: right; }
 .pick-name { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
+/* Selected, current and named-effort states all share one idiom: a tinted ground, accent
+   text, a hairline of the same accent. Dark type on a saturated fill was the loudest thing
+   on the page — louder than the verdict — and at this size, with this tracking, it also read
+   thin. Tracking is tighter here than the house 0.16em for the same reason: a filled chip is
+   a word, not a label. */
 .pick-effort {
-  font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--ink); background: var(--cyan); border-radius: 4px; padding: 0.12rem 0.4rem; margin-left: 0.45rem;
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 600;
+  color: var(--cyan); background: rgba(56, 225, 196, 0.14);
+  border: 1px solid rgba(56, 225, 196, 0.45);
+  border-radius: 5px; padding: 0.1rem 0.42rem; margin-left: 0.45rem;
   white-space: nowrap; vertical-align: 0.22em;
 }
-.card.architect .pick-effort { background: var(--violet); color: #fff; }
-.card.scout .pick-effort { background: var(--dim); color: var(--ink); }
+.card.architect .pick-effort {
+  color: #b9a6ff; background: rgba(124, 92, 255, 0.18); border-color: rgba(124, 92, 255, 0.5);
+}
+.card.scout .pick-effort {
+  color: var(--text); background: rgba(139, 151, 168, 0.16); border-color: rgba(139, 151, 168, 0.4);
+}
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.35rem; }
 .metric { border-top: 1px solid var(--edge); padding-top: 0.4rem; }
 .metric b { font-family: var(--mono); font-size: 1.05rem; display: block; font-weight: 500; }
@@ -271,7 +283,9 @@ button.toggle {
   padding: 0.4rem 0.85rem; cursor: pointer;
 }
 button.toggle:hover { color: var(--text); border-color: var(--dim); }
-button.toggle[aria-pressed="true"] { color: var(--ink); background: var(--cyan); border-color: var(--cyan); }
+button.toggle[aria-pressed="true"] {
+  color: var(--cyan); background: rgba(56, 225, 196, 0.14); border-color: rgba(56, 225, 196, 0.5);
+}
 
 footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--edge); color: var(--dim); font-size: 0.85rem; }
 footer a { color: var(--dim); }
@@ -383,11 +397,12 @@ footer a:hover { color: var(--text); }
 .tier-tab span { font-size: 0.68rem; letter-spacing: 0.06em; opacity: 0.75; }
 .tier-tab:hover { border-color: var(--dim); color: var(--text); }
 .tier-tab[aria-selected="true"] {
-  color: var(--ink);
-  background: var(--cyan);
-  border-color: var(--cyan);
+  color: var(--cyan);
+  background: rgba(56, 225, 196, 0.13);
+  border-color: rgba(56, 225, 196, 0.55);
 }
-.tier-tab[aria-selected="true"] span { opacity: 0.85; }
+.tier-tab[aria-selected="true"] b { color: var(--cyan); }
+.tier-tab[aria-selected="true"] span { color: var(--text); opacity: 0.8; }
 
 /* ---- monthly budget ---- */
 .budget-bar {
@@ -488,8 +503,8 @@ footer a:hover { color: var(--text); }
 }
 .tab {
   font-family: var(--mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
   border: 1px solid transparent;
@@ -501,9 +516,11 @@ footer a:hover { color: var(--text); }
 .tab:hover { color: var(--text); background: var(--raise); }
 .tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .tab[aria-selected="true"] {
-  color: var(--ink);
-  background: var(--cyan);
-  border-color: var(--cyan);
+  color: var(--text);
+  background: rgba(56, 225, 196, 0.13);
+  border-color: rgba(56, 225, 196, 0.5);
+  font-weight: 600;
+  letter-spacing: 0.1em;
 }
 [data-panel] { margin-top: 0; }
 
