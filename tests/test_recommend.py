@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from conftest import fixture
 
 from kvasir import db, recommend
-from kvasir.collectors import copilot, cursorbench, stupidlevel
+from kvasir.collectors import copilot, cursorbench, speed, stupidlevel
 from kvasir.config import Settings
 
 
@@ -15,9 +15,10 @@ def build(disabled=None):
     cb, _ = cursorbench.parse(fixture("cursorbench.html"))
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, _ = copilot.parse(fixture("copilot-models-and-pricing.html"))
+    sp, _ = speed.parse(fixture("artificialanalysis-models.html"))
     settings = Settings()
     disabled = disabled if disabled is not None else settings.disabled_models
-    return recommend.build(cb, ai, cp, settings, disabled)
+    return recommend.build(cb, ai, cp, settings, disabled, speed_rows=sp)
 
 
 def test_every_tier_gets_a_pick_with_an_effort():

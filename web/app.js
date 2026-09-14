@@ -308,7 +308,12 @@ function renderVerdicts(view) {
         ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
         <div class="badges">${driftBadge(pick.drift)}${copilotBadge(pick.copilot)}
           <span class="badge">${usd(pick.cost_usd)} / task</span>
-          <span class="badge">${pick.steps} steps</span></div>
+          <span class="badge">${pick.steps} steps</span>
+          ${
+            pick.speed
+              ? `<span class="badge ok">${Math.round(pick.speed.tokens_per_second)} tok/s</span>`
+              : '<span class="badge">speed not measured</span>'
+          }</div>
       </article>`)
     );
   });
@@ -371,9 +376,14 @@ function renderBudget(view) {
     ? `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits here — ${current.reference_used_pct}% of the tier, so the budget is not what decides your models.`
     : `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits — ${current.reference_used_pct}% of this tier. At ${current.name} the budget, not the benchmark, picks your models.`;
 
+  const stopped = current.stopped_note
+    ? ` It stops there because ${current.stopped_note}.`
+    : "";
   $("#budget-verdict").textContent =
     `About $${num(current.month_usd)} a month for an average engineer's workload, leaving ` +
-    `${credits(current.headroom_credits)} credits of headroom (${Math.max(0, 100 - used).toFixed(0)}%). ` +
+    `${credits(current.headroom_credits)} credits of headroom (${Math.max(0, 100 - used).toFixed(0)}%).` +
+    stopped +
+    " " +
     referenceLine;
 
   const body = $("#budget-table tbody");
@@ -403,6 +413,9 @@ function renderBudget(view) {
     `${assumptions.tasks_per_month} tasks a month (${assumptions.tasks_by_role.architect} planning, ` +
     `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
     `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
+    `The worker and the scout are roles you wait on all day, so a model measured below ` +
+    `${assumptions.speed_floor_tps} output tokens a second cannot take one — the architect is exempt, ` +
+    `because you wait on planning once and on purpose. A model nobody has timed is not treated as slow. ` +
     `The plan then spends the surplus up to ${Math.round(assumptions.target_utilisation * 100)}% of the ` +
     `tier and never plans past ${Math.round(assumptions.max_utilisation * 100)}% — an unused credit ` +
     `buys nothing, and the month is a model rather than a meter. ` +
@@ -976,6 +989,7 @@ function renderCopilot(view) {
       // What a task on this model actually costs out of the tier — the per-million rates
       // beside it are a rate, not a bill.
       taskCredits: candidate.cost_usd ? Math.round(candidate.cost_usd / rate) : null,
+      speed: candidate.speed ? candidate.speed.tokens_per_second : null,
       note: candidate.available === false ? candidate.unavailable_reason : null,
     });
   });
@@ -990,6 +1004,7 @@ function renderCopilot(view) {
       score: null,
       effort: null,
       taskCredits: null,
+      speed: null,
     });
   });
   rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.input ?? 0) - (b.input ?? 0));
@@ -1007,11 +1022,14 @@ function renderCopilot(view) {
         <td class="num" data-sort="${row.taskCredits ?? ""}">${
           row.taskCredits === null ? "—" : credits(row.taskCredits)
         }</td>
+        <td class="num" data-sort="${row.speed ?? ""}">${
+          row.speed === null ? "—" : Math.round(row.speed)
+        }</td>
         <td class="num" data-sort="${row.score ?? ""}">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
       </tr>`)
     );
   });
-  makeSortable("copilot", { index: 6, dir: -1 });
+  makeSortable("copilot", { index: 7, dir: -1 });
 }
 
 /* ---------- footer ---------- */

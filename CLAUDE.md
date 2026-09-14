@@ -1,9 +1,10 @@
 # CLAUDE.md — working agreement for Kvasir
 
 **Kvasir** is one page that answers a single question: *which agent do I start for this task,
-today.* It merges three sources — **CursorBench** (cost, tokens and steps per task, always per
-effort level), **AI Stupid Level** (drift: is this model quietly getting worse) and **GitHub
-Copilot's models-and-pricing docs** (what we can actually pick at work, and what it bills) — into
+today.* It merges four sources — **CursorBench** (cost, tokens and steps per task, always per
+effort level), **AI Stupid Level** (drift: is this model quietly getting worse), **GitHub
+Copilot's models-and-pricing docs** (what we can actually pick at work, and what it bills) and
+**Artificial Analysis** (output tokens per second — the only source that measures time) — into
 three roles: architect, worker, scout. Python + FastAPI + SQLite in a single container on Unraid,
 served at `kvasir.blinkneuron.eu`. State is a SQLite archive under `/data`; there is no other
 persistence and no external database. **Everything shipped is English — code, comments, docs,
@@ -85,6 +86,17 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   timeline, `/api/history` tags every reading with the version that produced it, and the page says
   so for six weeks after a change. Never compare scores across versions, and never explain a
   shrunken board as a bug before checking the version.
+- **Speed is a floor for the loop roles, never a score.** The worker and the scout are waited on
+  all day, so a model measured below `SPEED_FLOOR_TPS` cannot hold one; the architect is exempt,
+  because planning is waited on once and deliberately. A model Artificial Analysis has not timed
+  passes the floor — the same rule as the drift veto, for the same reason: absence of evidence
+  decides nothing. Coverage is partial (Sol, Terra and Sonnet 5 had no measurement in September),
+  so never build a rule that reads "no number" as "slow".
+- **An allowance is spent, not hoarded — but never silently.** Unused credits pool back to the
+  billing entity, so the plan buys up to `TARGET_UTILISATION` and stops at `MAX_UTILISATION`.
+  Surplus goes in role order (architect first), and a role may not climb onto another role's
+  model. When the plan stops short it records `stopped_because`: an unspent tier is either a
+  finding or a fault, and the difference is the reason printed next to it.
 - **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
   the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
 

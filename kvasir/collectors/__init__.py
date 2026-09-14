@@ -13,14 +13,15 @@ tests/fixtures/, which is the only defence against a source silently changing sh
 
 from __future__ import annotations
 
-from . import copilot, cursorbench, stupidlevel
+from . import copilot, cursorbench, speed, stupidlevel
 
-MODULES = {m.SOURCE: m for m in (cursorbench, stupidlevel, copilot)}
+MODULES = {m.SOURCE: m for m in (cursorbench, stupidlevel, copilot, speed)}
 
 SOURCE_LABELS = {
     "cursorbench": "CursorBench",
     "stupidlevel": "AI Stupid Level",
     "copilot": "GitHub Copilot",
+    "speed": "Artificial Analysis",
 }
 
-__all__ = ["MODULES", "SOURCE_LABELS", "copilot", "cursorbench", "stupidlevel"]
+__all__ = ["MODULES", "SOURCE_LABELS", "copilot", "cursorbench", "speed", "stupidlevel"]

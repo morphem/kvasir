@@ -164,6 +164,7 @@ def view(all: bool = Query(False, description="include models hidden by configur
     cb_rows, cb_meta = db.latest(settings.db_path, "cursorbench")
     ai_rows, _ = db.latest(settings.db_path, "stupidlevel")
     cp_rows, cp_meta = db.latest(settings.db_path, "copilot")
+    speed_rows, _ = db.latest(settings.db_path, "speed")
     payload = recommend.build(
         cb_rows,
         ai_rows,
@@ -172,6 +173,7 @@ def view(all: bool = Query(False, description="include models hidden by configur
         settings.disabled_models,
         credit_usd=cp_meta.get("credit_usd"),
         show_all=all,
+        speed_rows=speed_rows,
     )
     payload["credit_usd_quote"] = cp_meta.get("credit_usd_quote")
     payload["disabled_by_config"] = settings.disabled_models

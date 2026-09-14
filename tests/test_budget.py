@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from conftest import fixture
 
 from kvasir import budget, recommend
-from kvasir.collectors import copilot, cursorbench, stupidlevel
+from kvasir.collectors import copilot, cursorbench, speed, stupidlevel
 from kvasir.config import Settings
 
 
@@ -17,11 +17,18 @@ def view(tiers=None):
     cb, _ = cursorbench.parse(fixture("cursorbench.html"))
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, cp_meta = copilot.parse(fixture("copilot-models-and-pricing.html"))
+    sp, _ = speed.parse(fixture("artificialanalysis-models.html"))
     settings = Settings()
     if tiers:
         settings = Settings(tiers=tiers)
     return recommend.build(
-        cb, ai, cp, settings, settings.disabled_models, credit_usd=cp_meta.get("credit_usd")
+        cb,
+        ai,
+        cp,
+        settings,
+        settings.disabled_models,
+        credit_usd=cp_meta.get("credit_usd"),
+        speed_rows=sp,
     )
 
 
@@ -89,12 +96,40 @@ def test_the_mechanical_role_never_outranks_the_planning_one():
     assert plan["used_pct"] < 100 * budget.MAX_UTILISATION
 
 
-def test_a_tier_is_actually_used_rather_than_handed_back():
-    """Unused credits buy nothing, so a plan that stops at a quarter of the tier is a bug."""
-    payload = view()
-    heavy = payload["plans"]["heavy"]
-    assert heavy["used_pct"] >= 70, f"Heavy only uses {heavy['used_pct']}% of its allowance"
+def test_a_tier_is_used_or_says_what_stopped_it():
+    """Unused credits buy nothing. Stopping short is allowed; stopping silently is not."""
+    for plan in view()["plans"].values():
+        if plan["used_pct"] >= 100 * budget.TARGET_UTILISATION:
+            assert plan["stopped_because"] is None
+            continue
+        assert plan["stopped_because"] in budget.STOP_REASONS
+        assert plan["stopped_note"]
+
+
+def test_the_surplus_walk_actually_runs():
+    heavy = view()["plans"]["heavy"]
     assert any(role.get("upgraded_from") for role in heavy["roles"].values())
+    assert heavy["used_pct"] > 50
+
+
+def test_a_slow_model_cannot_take_a_role_you_wait_on():
+    """The architect may be slow — you wait once, deliberately. The loop roles may not."""
+    for plan in view()["plans"].values():
+        for name in ("worker", "scout"):
+            pick = plan["roles"][name]["pick"]
+            if not pick:
+                continue
+            speed = (pick.get("speed") or {}).get("tokens_per_second")
+            if speed is not None:
+                assert speed >= budget.SPEED_FLOOR_TPS, f"{name} runs at {speed} tokens/s"
+
+
+def test_an_unmeasured_model_is_not_treated_as_slow():
+    """Absence of a measurement decides nothing — the same rule the drift veto learned."""
+    unmeasured = {"key": "mystery", "effort": "max", "score": 60.0, "cost_uusd": 1_000_000}
+    assert budget.fast_enough(unmeasured)
+    assert budget.fast_enough({**unmeasured, "speed": {"tokens_per_second": 500}})
+    assert not budget.fast_enough({**unmeasured, "speed": {"tokens_per_second": 5}})
 
 
 def test_no_plan_ever_passes_the_safety_cap():

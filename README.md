@@ -13,6 +13,7 @@ One page that merges three sources into one answer, and keeps the history behind
 | [CursorBench](https://cursor.com/cursorbench) | Cost, tokens and steps per real task — **always per effort level** |
 | [AI Stupid Level](https://aistupidlevel.info/) | Drift: whether a model is quietly getting worse under the same name |
 | [GitHub Copilot docs](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) | What our Copilot enables, and what a million tokens costs |
+| [Artificial Analysis](https://artificialanalysis.ai/models) | Output tokens per second — the only source that measures time |
 
 Three roles come out of it — **architect** (plans and decomposes), **worker** (does the typical
 job), **scout** (cheap and mechanical) — each filled by whichever model wins on today's data, not
@@ -57,6 +58,7 @@ add the container from the template — updates then arrive the normal Unraid wa
 | `KVASIR_INTERVAL_STUPIDLEVEL` | `240` | Drift poll interval, minutes. The free API tier allows 10 calls a day |
 | `KVASIR_INTERVAL_CURSORBENCH` | `720` | CursorBench poll interval, minutes |
 | `KVASIR_INTERVAL_COPILOT` | `720` | Copilot pricing poll interval, minutes |
+| `KVASIR_INTERVAL_SPEED` | `1440` | Artificial Analysis poll interval, minutes |
 | `KVASIR_STUPIDLEVEL_API_KEY` | *(empty)* | Free key from aistupidlevel.info. Falls back to `secrets.env` or `stupidlevel_api_key.key` inside the data volume, which is what survives a container rebuild. Without a key the drift scores freeze at the last good reading |
 | `KVASIR_DISABLED_MODELS` | `grok,fable,kimi-k2.7` | Model *families* Copilot sells but we cannot use. Models absent from Copilot are excluded automatically |
 | `KVASIR_WORKER_MAX_COST` | `2.50` | Worker's cost ceiling, USD per task |

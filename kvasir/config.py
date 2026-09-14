@@ -83,6 +83,8 @@ class Settings:
     interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 240)
     interval_cursorbench: int = _int("KVASIR_INTERVAL_CURSORBENCH", 720)
     interval_copilot: int = _int("KVASIR_INTERVAL_COPILOT", 720)
+    # Independent speed measurements change on the scale of model releases, not hours.
+    interval_speed: int = _int("KVASIR_INTERVAL_SPEED", 1440)
     # AI Stupid Level's published run history, which draws the sparklines. Daily was too
     # slow: the headline score moves hourly, so the chart beside it was up to a day behind.
     interval_backfill: int = _int("KVASIR_INTERVAL_BACKFILL", 360)

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from kvasir import db
 from kvasir.api import app
-from kvasir.collectors import copilot, cursorbench, stupidlevel
+from kvasir.collectors import copilot, cursorbench, speed, stupidlevel
 from kvasir.config import settings
 
 
@@ -16,6 +16,7 @@ def seed():
         (cursorbench, "cursorbench.html"),
         (copilot, "copilot-models-and-pricing.html"),
         (stupidlevel, "stupidlevel-scores.json"),
+        (speed, "artificialanalysis-models.html"),
     ):
         rows, meta = module.parse(fixture(name))
         started = db.now_iso()
@@ -35,7 +36,7 @@ def test_health_reports_every_source():
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert set(body["sources"]) == {"cursorbench", "stupidlevel", "copilot"}
+    assert set(body["sources"]) == {"cursorbench", "stupidlevel", "copilot", "speed"}
 
 
 def test_view_is_one_consistent_payload():

@@ -34,6 +34,7 @@ def interval_minutes(source: str) -> int:
         "stupidlevel": settings.interval_stupidlevel,
         "cursorbench": settings.interval_cursorbench,
         "copilot": settings.interval_copilot,
+        "speed": settings.interval_speed,
         BACKFILL_SOURCE: settings.interval_backfill,
     }.get(source, 720)
 

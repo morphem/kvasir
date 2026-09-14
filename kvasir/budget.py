@@ -40,6 +40,14 @@ BARGAIN_USD_PER_PP = 0.15
 # they are pooled back at the billing entity — so once the economical picks are in, the plan
 # keeps climbing until it uses this much of the tier. Stopping at 27% of a 100k allowance was
 # not thrift, it was leaving capability on the table.
+# Artificial Analysis, output tokens per second. The worker and the scout are loop roles —
+# you wait on them, repeatedly, all day — so a measured-slow model does not belong there
+# whatever it scores. The architect is exempt: for planning you wait once, on purpose.
+#
+# Unmeasured is not slow. A model this source has not timed passes the floor, for the same
+# reason an unmeasured model cannot win a drift veto: absence of evidence decides nothing.
+SPEED_FLOOR_TPS = 80
+
 TARGET_UTILISATION = 0.80
 # The month is a model, not a meter. Never plan past this, so a heavier month than assumed
 # does not run the tier dry.
@@ -58,6 +66,18 @@ def drifting(candidate: dict) -> bool:
     if not drift:
         return False
     return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
+
+
+def fast_enough(candidate: dict, floor: float = SPEED_FLOOR_TPS) -> bool:
+    speed = candidate.get("speed")
+    if not speed or not speed.get("tokens_per_second"):
+        return True
+    return speed["tokens_per_second"] >= floor
+
+
+def measured_speed(candidate: dict) -> float | None:
+    speed = candidate.get("speed")
+    return speed.get("tokens_per_second") if speed else None
 
 
 def steady(candidate: dict) -> bool:
@@ -141,6 +161,7 @@ def _why(
     tasks: float,
     drift_replaced: dict | None = None,
     upgraded_from: str | None = None,
+    speed_blocked: dict | None = None,
 ) -> str:
     """Why this model, in this role, at this tier — in the terms the budget is managed in."""
     price = f"{per_task:.0f} credits a task"
@@ -163,6 +184,12 @@ def _why(
         base += (
             f" Bought up from {upgraded_from} with the tier's unused credits: this plan aims to "
             f"use {int(TARGET_UTILISATION * 100)}% of the allowance rather than hand it back."
+        )
+    if speed_blocked:
+        base += (
+            f" Not {speed_blocked['label']} despite its {speed_blocked['score']:.1f}%: it runs at "
+            f"{speed_blocked['tokens_per_second']:.0f} tokens a second, under the "
+            f"{SPEED_FLOOR_TPS:.0f} this role needs to be worth waiting on."
         )
     if drift_replaced:
         base += (
@@ -221,6 +248,50 @@ def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
     return True
 
 
+STOP_REASONS = {
+    "target": "the plan reached its target share of the tier",
+    "speed": "every model left is too slow for a role you wait on repeatedly",
+    "roles": "every upgrade left would collapse two roles onto one model",
+    "cap": "the next step up would pass the safety margin",
+    "board": "nothing better exists on the board",
+}
+
+
+def _why_stopped(state: dict, credit_usd: float, spent: float, target: float, cap: float) -> str | None:
+    """Why the plan stopped short of the target — a low number needs its reason beside it.
+
+    An unspent tier is either a finding or a fault, and the difference is the reason. Left
+    unexplained it reads as a broken page, which is how the shrunken board read in September.
+    """
+    if spent >= target:
+        return None
+    blocked_by_speed = blocked_by_roles = blocked_by_cap = False
+    for role, slot in state.items():
+        pick = slot["pick"]
+        if not pick:
+            continue
+        for candidate in slot["full_pool"]:
+            if candidate["score"] <= pick["score"]:
+                continue
+            extra = (
+                credits_for(candidate["cost_uusd"], credit_usd)
+                - credits_for(pick["cost_uusd"], credit_usd)
+            ) * slot["billable_tasks"]
+            if spent + extra > cap:
+                blocked_by_cap = True
+            elif role != "architect" and not fast_enough(candidate):
+                blocked_by_speed = True
+            elif not _keeps_roles_apart(state, role, candidate):
+                blocked_by_roles = True
+    if blocked_by_speed:
+        return "speed"
+    if blocked_by_roles:
+        return "roles"
+    if blocked_by_cap:
+        return "cap"
+    return "board"
+
+
 def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_trusted: bool) -> list[dict]:
     """Climb from the economical picks until the tier is properly used.
 
@@ -276,6 +347,10 @@ def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_tru
                 break  # the drift veto sent us back where we started
             slot["pick"] = upgraded
             steps.append({"role": role, "from": previous["label"], "to": upgraded["label"]})
+    state["_stopped"] = _why_stopped(
+        {k: v for k, v in state.items() if not k.startswith("_")},
+        credit_usd, projected(), target, cap,
+    )
     return steps
 
 
@@ -300,13 +375,31 @@ def plan_for_tier(
         billable_tasks = monthly[role] * OVERHEAD
         per_task = share_credits / billable_tasks if billable_tasks else 0.0
 
+        speed_blocked = None
         if role == "architect":
             pick = _best_affordable(candidates, per_task, credit_usd)
             pool = [c for c in candidates if _fits(c, per_task, credit_usd)]
+            surplus_pool = candidates
         else:
             ceiling = FAIR_USD_PER_PP if role == "worker" else BARGAIN_USD_PER_PP
-            pick = _walk_ladder(frontier, per_task, credit_usd, ceiling)
-            pool = [c for c in frontier if _fits(c, per_task, credit_usd)]
+            quick = [c for c in frontier if fast_enough(c)]
+            pick = _walk_ladder(quick, per_task, credit_usd, ceiling)
+            pool = [c for c in quick if _fits(c, per_task, credit_usd)]
+            surplus_pool = quick
+            # What the floor cost this role, so the card can say it rather than just differ.
+            ignored = [
+                c
+                for c in frontier
+                if not fast_enough(c) and _fits(c, per_task, credit_usd)
+                and (pick is None or c["score"] > pick["score"])
+            ]
+            if ignored:
+                best_ignored = max(ignored, key=lambda c: c["score"])
+                speed_blocked = {
+                    "label": best_ignored["label"],
+                    "score": best_ignored["score"],
+                    "tokens_per_second": measured_speed(best_ignored),
+                }
         if pick is not None:
             # The budget decides what is affordable; drift still decides what is sane.
             pick, drift_replaced = _avoid_drift(pick, pool, drift_trusted)
@@ -318,7 +411,9 @@ def plan_for_tier(
             "drift_replaced": drift_replaced,
             "pool": pool,
             # Spending the surplus is bounded by the tier, not by the opening allocation.
-            "surplus_pool": candidates if role == "architect" else frontier,
+            "surplus_pool": surplus_pool,
+            "full_pool": candidates if role == "architect" else frontier,
+            "speed_blocked": speed_blocked,
             "share_credits": share_credits,
             "billable_tasks": billable_tasks,
             "per_task": per_task,
@@ -326,11 +421,13 @@ def plan_for_tier(
 
     # Phase two: an unused credit buys nothing, so climb until the tier is properly used.
     upgrades = _spend_the_tier(state, tier["credits"], credit_usd, drift_trusted)
+    stopped_because = state.pop("_stopped", None)
     upgraded_roles = {step["role"]: step["from"] for step in upgrades}
 
     for role in ("architect", "worker", "scout"):
         slot = state[role]
         pick, drift_replaced = slot["pick"], slot["drift_replaced"]
+        speed_blocked = slot["speed_blocked"]
         share_credits, billable_tasks, per_task = (
             slot["share_credits"], slot["billable_tasks"], slot["per_task"]
         )
@@ -379,10 +476,12 @@ def plan_for_tier(
             "pick": pick,
             "why": _why(
                 role, pick, per_task, per_task_credits, monthly[role], drift_replaced,
-                upgraded_roles.get(role),
+                upgraded_roles.get(role), speed_blocked,
             ),
             "upgraded_from": upgraded_roles.get(role),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
+            "speed_blocked": speed_blocked,
+            "tokens_per_second": measured_speed(pick),
             "out_of_reach": out_of_reach,
             "share_credits": round(share_credits),
             "per_task_budget_credits": round(per_task),
@@ -420,6 +519,8 @@ def plan_for_tier(
         "reference_credits": round(reference_credits),
         "reference_used_pct": round(100 * reference_credits / tier["credits"], 1) if tier["credits"] else None,
         "reference_fits": reference_credits <= tier["credits"],
+        "stopped_because": stopped_because,
+        "stopped_note": STOP_REASONS.get(stopped_because) if stopped_because else None,
     }
 
 
@@ -451,6 +552,7 @@ def assumptions(credit_usd: float) -> dict:
         "budget_shares": BUDGET_SHARES,
         "fair_usd_per_pp": FAIR_USD_PER_PP,
         "bargain_usd_per_pp": BARGAIN_USD_PER_PP,
+        "speed_floor_tps": SPEED_FLOOR_TPS,
         "target_utilisation": TARGET_UTILISATION,
         "max_utilisation": MAX_UTILISATION,
     }

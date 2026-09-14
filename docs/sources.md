@@ -54,3 +54,23 @@ default tier is the one the verdict prices against. Polled every 12 hours.
 
 **Do not** treat a Copilot price as a per-task cost. It is per million tokens; the per-task figure
 comes from CursorBench, and the two only meet in the verdict cards.
+
+## Artificial Analysis — `https://artificialanalysis.ai/models`
+
+Independent timing: **output tokens per second**, measured on dedicated hardware. The only source
+here that measures a clock. It exists because the page kept recommending models nobody would
+actually start: a model can win on score and price and still be the wrong choice, because you sit
+watching it think. Opus 5 measures 52 tokens a second against Gemini 3.8 Flash's 278 — a fact no
+other source on this page could express.
+
+Read from the page's **schema.org `Dataset` blocks** (`<script type="application/ld+json">`), one
+per chart, each row labelled with the model and the effort it ran at. Proper structured data, so
+this collector needs no scraping heuristics — and any chart they add arrives as extra metrics with
+no code change. Their REST API needs a key; the page does not.
+
+Polled daily; independent timings move with model releases, not hours.
+
+**Coverage is partial, and that shapes the rules.** In September the set carried 11 timed models:
+Gemini 3.8 Flash, Muse Spark, Luna, Fable 5.1, Grok, Opus 5, Kimi K3 and others — but not GPT-5.6
+Sol, GPT-5.6 Terra or Sonnet 5. **Do not** write a rule that treats a missing measurement as a slow
+model. The speed floor applies only to models this source has actually timed.

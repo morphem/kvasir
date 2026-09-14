@@ -30,7 +30,12 @@ def _usd(uusd: int | None) -> float | None:
     return None if uusd is None else round(uusd / 1_000_000, 4)
 
 
-def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tuple[list[dict], list[dict]]:
+def merge(
+    cb_rows: list[dict],
+    ai_rows: list[dict],
+    cp_rows: list[dict],
+    speed_rows: list[dict] | None = None,
+) -> tuple[list[dict], list[dict]]:
     """Join the three sources on the canonical model key.
 
     Returns (candidates, copilot_only) — the second list is models we can pick at work but
@@ -38,6 +43,10 @@ def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tupl
     hiding.
     """
     drift_by_model = {row["model_key"]: row for row in ai_rows}
+    # Speed is a property of the model, not of the effort it was asked for: Artificial
+    # Analysis measures one setting per model, so the figure is attached to every variant
+    # and labelled with the setting it was actually measured at.
+    speed_by_model = {row["model_key"]: row for row in (speed_rows or [])}
     copilot_by_model: dict[str, dict] = {}
     for row in cp_rows:
         tier = (row.get("tier") or "Default").lower()
@@ -72,6 +81,13 @@ def merge(cb_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]) -> tupl
                     "stale": drift.get("is_stale"),
                     "ci_low": drift.get("ci_low"),
                     "ci_high": drift.get("ci_high"),
+                },
+                "speed": None
+                if key not in speed_by_model
+                else {
+                    "tokens_per_second": speed_by_model[key]["tokens_per_second"],
+                    "measured_effort": speed_by_model[key]["effort"],
+                    "source_name": speed_by_model[key]["source_name"],
                 },
                 "copilot": None
                 if not copilot
@@ -426,10 +442,17 @@ def capture(db_path: str, cfg) -> bool:
     cb_rows, _ = db.latest(db_path, "cursorbench")
     ai_rows, _ = db.latest(db_path, "stupidlevel")
     cp_rows, cp_meta = db.latest(db_path, "copilot")
+    speed_rows, _ = db.latest(db_path, "speed")
     if not (cb_rows and ai_rows and cp_rows):
         return False  # an incomplete board has no verdict worth writing down
     view = build(
-        cb_rows, ai_rows, cp_rows, cfg, cfg.disabled_models, credit_usd=cp_meta.get("credit_usd")
+        cb_rows,
+        ai_rows,
+        cp_rows,
+        cfg,
+        cfg.disabled_models,
+        credit_usd=cp_meta.get("credit_usd"),
+        speed_rows=speed_rows,
     )
     _, changed = db.archive_recommendation(db_path, _decision(view))
     return changed
@@ -443,8 +466,9 @@ def build(
     disabled: list[str],
     credit_usd: float | None = None,
     show_all: bool = False,
+    speed_rows: list[dict] | None = None,
 ) -> dict:
-    candidates, copilot_only = merge(cb_rows, ai_rows, cp_rows)
+    candidates, copilot_only = merge(cb_rows, ai_rows, cp_rows, speed_rows)
 
     # Availability is only knowable while we hold GitHub's model list. On a cold start, or
     # if that source ever fails before its first snapshot, an empty board would be a worse
