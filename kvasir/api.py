@@ -51,6 +51,10 @@ WEB_DIR = os.environ.get("KVASIR_WEB_DIR") or os.path.join(
 async def lifespan(app: FastAPI):
     db.init(settings.db_path)
     log.info("kvasir %s — data dir %s", __version__, settings.data_dir)
+    log.info(
+        "AI Stupid Level key: %s",
+        "present" if settings.stupidlevel_api_key else "absent — drift scores will freeze",
+    )
 
     async def bootstrap():
         # Anything the archive is missing is fetched immediately; the scheduler then keeps
@@ -176,6 +180,7 @@ def view(all: bool = Query(False, description="include models hidden by configur
             "version": __version__,
             "generated_at": db.now_iso(),
             "benchmark_version": cb_meta.get("benchmark_version"),
+            "benchmark_history": db.benchmark_versions(settings.db_path, "cursorbench"),
             "sources": _sources_block(),
             "drift": _drift_block(ai_rows),
             "archive": db.archive_stats(settings.db_path),

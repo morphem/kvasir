@@ -238,13 +238,17 @@ def history(
     db_path: str, source: str, model_key: str, effort: str | None = None, days: int = 30
 ) -> list[dict]:
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
-    query = """SELECT captured_at, score, cost_uusd FROM observation
-               WHERE source=? AND model_key=? AND captured_at>=?"""
+    # The benchmark version rides along: two readings a week apart can be on two different
+    # scales, and a chart that does not know this draws a cliff and calls it a trend.
+    query = """SELECT o.captured_at, o.score, o.cost_uusd,
+                      json_extract(s.meta_json, '$.benchmark_version') AS benchmark_version
+               FROM observation o JOIN snapshot s ON s.id = o.snapshot_id
+               WHERE o.source=? AND o.model_key=? AND o.captured_at>=?"""
     params: list = [source, model_key, since]
     if effort:
-        query += " AND effort=?"
+        query += " AND o.effort=?"
         params.append(effort)
-    query += " ORDER BY captured_at"
+    query += " ORDER BY o.captured_at"
     with connect(db_path) as conn:
         return [dict(row) for row in conn.execute(query, params).fetchall()]
 
@@ -313,6 +317,27 @@ def drift_summary(db_path: str, days: int = 7) -> dict[str, dict]:
             "delta": round(tail - head, 1),
         }
     return out
+
+
+def benchmark_versions(db_path: str, source: str = "cursorbench") -> list[dict]:
+    """Which benchmark version produced which stretch of the archive.
+
+    A benchmark that re-baselines is not the same measurement afterwards: CursorBench 4.0
+    put the top score 19 points below 3.2's and re-ran a third of the models. Without this
+    timeline the archive silently mixes two scales, and the page cannot explain why the
+    board shrank overnight.
+    """
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            """SELECT json_extract(meta_json, '$.benchmark_version') AS version,
+                      MIN(captured_at) AS first_seen,
+                      MAX(captured_at) AS last_seen,
+                      COUNT(*) AS snapshots
+               FROM snapshot WHERE source=? AND version IS NOT NULL AND version != ''
+               GROUP BY version ORDER BY first_seen""",
+            (source,),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def source_status(db_path: str) -> dict[str, dict]:

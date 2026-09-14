@@ -17,6 +17,38 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _secret(name: str, data_dir: str) -> str:
+    """A secret, from the environment or from the data volume — in that order.
+
+    The volume is the only thing that survives every way this container gets recreated: the
+    Unraid template, the Docker tab's Apply button, and the deploy script all build the run
+    command differently, and an environment variable set by one of them is simply absent in
+    the others. That is how the key installed on 8 September was gone by the 12th, with the
+    file still sitting on disk. A secret that lives beside the state it belongs to cannot be
+    lost by a redeploy.
+
+    Accepts either a bare key on one line, or KEY=value lines.
+    """
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    for filename in (f"{name.lower().replace('kvasir_', '')}.key", "secrets.env"):
+        try:
+            with open(os.path.join(data_dir, filename), encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" not in line:
+                        return line
+                    field_name, _, field_value = line.partition("=")
+                    if field_name.strip() == name:
+                        return field_value.strip().strip("\"'")
+        except OSError:
+            continue
+    return ""
+
+
 def _tiers(name: str, default: str) -> list[dict]:
     """"Basic:13000,Heavy:100000" -> the AI-credit tiers this page reports on.
 
@@ -84,7 +116,11 @@ class Settings:
     # one the page keeps the last good scores and says how old they are; with one it polls
     # the v1 API. The free tier allows 10 requests a day, which is why the interval above
     # is hours rather than minutes.
-    stupidlevel_api_key: str = os.environ.get("KVASIR_STUPIDLEVEL_API_KEY", "")
+    stupidlevel_api_key: str = field(
+        default_factory=lambda: _secret(
+            "KVASIR_STUPIDLEVEL_API_KEY", os.environ.get("KVASIR_DATA_DIR", "/data")
+        )
+    )
 
     request_timeout_s: int = _int("KVASIR_REQUEST_TIMEOUT", 30)
     # Set to 0 to serve whatever is already archived and never touch the network — used by

@@ -313,11 +313,43 @@ function renderVerdicts(view) {
     );
   });
 
+  renderBenchmarkNote(view);
+
   const thresholds = view.thresholds;
   $("#verdict-sub").textContent =
     `Filled under this tier's monthly credit budget. Architect: the best model its share affords. ` +
     `Worker: upgrades while they cost at most $${thresholds.steep_usd_per_pp.toFixed(2)} per point. ` +
     `Scout: bargain upgrades only, at most $${thresholds.bargain_usd_per_pp.toFixed(2)} per point.`;
+}
+
+/* A re-baselined benchmark is the single change most likely to make this page look broken:
+   the board shrinks, every score drops, and nothing on the page says why. It gets a line of
+   its own for as long as the previous version is still in living memory. */
+function renderBenchmarkNote(view) {
+  const note = $("#benchmark-note");
+  if (!note) return;
+  const history = view.benchmark_history || [];
+  note.hidden = history.length < 2;
+  if (history.length < 2) return;
+
+  const current = history[history.length - 1];
+  const previous = history[history.length - 2];
+  const since = new Date(current.first_seen);
+  const days = Math.round((Date.now() - since.getTime()) / 86400000);
+  if (days > 45) {
+    note.hidden = true;
+    return;
+  }
+  const models = new Set(
+    [...view.candidates, ...(view.excluded || [])].map((candidate) => candidate.key)
+  ).size;
+  const top = Math.max(...view.candidates.map((candidate) => candidate.score));
+  note.textContent =
+    `CursorBench ${current.version} replaced ${previous.version} on ` +
+    `${since.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}: a new suite, ` +
+    `covering ${models} models instead of the previous set, and the best score on our board ` +
+    `is now ${top.toFixed(1)}%. Scores either side of that date are not the same measurement, and a ` +
+    `model this suite has not re-run shows as "not benchmarked" until it does.`;
 }
 
 /* ---------- monthly budget ---------- */

@@ -22,7 +22,10 @@ KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7}"
 # The AI Stupid Level key is a secret: it lives in a root-only file on the server and never
 # in this repo, in the Unraid template, or in a container label. Taken from the environment
 # when given, otherwise read back from the server so a redeploy cannot silently drop it.
-KV_SECRETS="${KV_SECRETS:-/mnt/user/appdata/kvasir/secrets.env}"
+# Inside the data volume on purpose: the container reads it from there when no environment
+# variable is set, so the key survives a rebuild from the Unraid template or the Docker tab,
+# neither of which knows about this script.
+KV_SECRETS="${KV_SECRETS:-${KV_APPDATA:-/mnt/user/appdata/kvasir}/secrets.env}"
 KV_ASL_KEY="${KVASIR_STUPIDLEVEL_API_KEY:-}"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,7 +41,7 @@ fi
 if [ -n "$KV_ASL_KEY" ]; then
   ssh "$KV_SERVER" "install -d -m 750 -o 99 -g 100 \"$(dirname "$KV_SECRETS")\" \
     && printf 'KVASIR_STUPIDLEVEL_API_KEY=%s\n' \"$KV_ASL_KEY\" > \"$KV_SECRETS\" \
-    && chmod 600 \"$KV_SECRETS\""
+    && chown 99:100 \"$KV_SECRETS\" && chmod 600 \"$KV_SECRETS\""
   echo "api key stored on the server"
 fi
 

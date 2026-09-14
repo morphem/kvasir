@@ -136,3 +136,29 @@ def test_recommendations_are_served_from_the_archive():
     for verdict in verdicts.values():
         assert verdict["pick"]["key"]
         assert verdict["pick"]["effort"]
+
+
+def test_the_api_key_survives_a_container_rebuild():
+    """The key vanished once because it lived only in an env var one rebuild path sets."""
+    import os
+    import tempfile
+
+    from kvasir.config import Settings, _secret
+
+    data_dir = tempfile.mkdtemp(prefix="kvasir-secret-")
+    assert _secret("KVASIR_STUPIDLEVEL_API_KEY", data_dir) == ""
+
+    with open(os.path.join(data_dir, "secrets.env"), "w", encoding="utf-8") as handle:
+        handle.write("# written by the deploy script\nKVASIR_STUPIDLEVEL_API_KEY=asl_live_file\n")
+    assert _secret("KVASIR_STUPIDLEVEL_API_KEY", data_dir) == "asl_live_file"
+
+    with open(os.path.join(data_dir, "stupidlevel_api_key.key"), "w", encoding="utf-8") as handle:
+        handle.write("asl_live_bare\n")
+    assert _secret("KVASIR_STUPIDLEVEL_API_KEY", data_dir) == "asl_live_bare"
+
+    os.environ["KVASIR_STUPIDLEVEL_API_KEY"] = "asl_live_env"
+    try:
+        assert _secret("KVASIR_STUPIDLEVEL_API_KEY", data_dir) == "asl_live_env"
+        assert Settings().stupidlevel_api_key == "asl_live_env"
+    finally:
+        del os.environ["KVASIR_STUPIDLEVEL_API_KEY"]

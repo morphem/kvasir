@@ -74,6 +74,17 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   The exact-key list it replaced let fable-5.1 become the recommended architect the day GitHub
   shipped it, because "fable-5" did not match it. Point releases arrive faster than lists get
   updated; match families.
+- **Secrets live in the data volume, not only in an environment variable.** `_secret()` reads
+  `KVASIR_STUPIDLEVEL_API_KEY`, then `secrets.env` / `*.key` under `/data`. The Unraid template,
+  the Docker tab's Apply button and `deploy/install-unraid.sh` each build the run command
+  differently, so a variable set by one is absent in the others: the key installed on 8 September
+  was gone by the 12th, with the file still on disk. The volume is the only thing every path
+  keeps. The file must be readable by 99:100 — the container is not root.
+- **A benchmark can re-baseline under you.** CursorBench 4.0 (2026-09-10) replaced 3.2, dropped the
+  top score 19 points and re-ran a third of the models. `db.benchmark_versions()` keeps that
+  timeline, `/api/history` tags every reading with the version that produced it, and the page says
+  so for six weeks after a change. Never compare scores across versions, and never explain a
+  shrunken board as a bug before checking the version.
 - **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
   the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
 
