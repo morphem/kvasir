@@ -86,6 +86,10 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   timeline, `/api/history` tags every reading with the version that produced it, and the page says
   so for six weeks after a change. Never compare scores across versions, and never explain a
   shrunken board as a bug before checking the version.
+- **Two clocks, joined differently.** Output speed is a property of the model and its hardware, so
+  it carries across efforts; latency is not, because reasoning effort *is* the waiting (Opus 5:
+  49.7 s to first answer at max, 3.8 s at medium). `_speed_block()` keeps them apart on purpose.
+  A zero in a stacked latency bar means absent, never instant.
 - **Speed is a floor for the loop roles, never a score.** The worker and the scout are waited on
   all day, so a model measured below `SPEED_FLOOR_TPS` cannot hold one; the architect is exempt,
   because planning is waited on once and deliberately. A model Artificial Analysis has not timed

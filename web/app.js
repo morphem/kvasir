@@ -309,11 +309,7 @@ function renderVerdicts(view) {
         <div class="badges">${driftBadge(pick.drift)}${copilotBadge(pick.copilot)}
           <span class="badge">${usd(pick.cost_usd)} / task</span>
           <span class="badge">${pick.steps} steps</span>
-          ${
-            pick.speed
-              ? `<span class="badge ok">${Math.round(pick.speed.tokens_per_second)} tok/s</span>`
-              : '<span class="badge">speed not measured</span>'
-          }</div>
+          ${speedBadges(pick.speed)}</div>
       </article>`)
     );
   });
@@ -355,6 +351,27 @@ function renderBenchmarkNote(view) {
     `covering ${models} models instead of the previous set, and the best score on our board ` +
     `is now ${top.toFixed(1)}%. Scores either side of that date are not the same measurement, and a ` +
     `model this suite has not re-run shows as "not benchmarked" until it does.`;
+}
+
+/* Two different clocks, and the difference is the whole point: tokens per second is how
+   fast it types, the wait is how long you sit there before it starts. A model can be quick
+   on the first and unbearable on the second. */
+function speedBadges(speed) {
+  if (!speed) return '<span class="badge">speed not measured</span>';
+  const out = [];
+  if (speed.tokens_per_second) {
+    out.push(`<span class="badge ok">${Math.round(speed.tokens_per_second)} tok/s</span>`);
+  }
+  if (speed.first_answer_seconds) {
+    const slow = speed.first_answer_seconds >= 20;
+    out.push(
+      `<span class="badge ${slow ? "warn" : "ok"}">${speed.first_answer_seconds}s to first answer</span>`
+    );
+  }
+  if (speed.end_to_end_seconds) {
+    out.push(`<span class="badge">${speed.end_to_end_seconds}s per 500 tokens</span>`);
+  }
+  return out.join("") || '<span class="badge">speed not measured</span>';
 }
 
 /* ---------- monthly budget ---------- */
@@ -990,6 +1007,7 @@ function renderCopilot(view) {
       // beside it are a rate, not a bill.
       taskCredits: candidate.cost_usd ? Math.round(candidate.cost_usd / rate) : null,
       speed: candidate.speed ? candidate.speed.tokens_per_second : null,
+      wait: candidate.speed ? candidate.speed.first_answer_seconds : null,
       note: candidate.available === false ? candidate.unavailable_reason : null,
     });
   });
@@ -1005,6 +1023,7 @@ function renderCopilot(view) {
       effort: null,
       taskCredits: null,
       speed: null,
+      wait: null,
     });
   });
   rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.input ?? 0) - (b.input ?? 0));
@@ -1025,11 +1044,14 @@ function renderCopilot(view) {
         <td class="num" data-sort="${row.speed ?? ""}">${
           row.speed === null ? "—" : Math.round(row.speed)
         }</td>
+        <td class="num" data-sort="${row.wait ?? ""}">${
+          row.wait === null || row.wait === undefined ? "—" : `${row.wait}s`
+        }</td>
         <td class="num" data-sort="${row.score ?? ""}">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
       </tr>`)
     );
   });
-  makeSortable("copilot", { index: 7, dir: -1 });
+  makeSortable("copilot", { index: 8, dir: -1 });
 }
 
 /* ---------- footer ---------- */

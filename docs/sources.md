@@ -68,6 +68,29 @@ per chart, each row labelled with the model and the effort it ran at. Proper str
 this collector needs no scraping heuristics — and any chart they add arrives as extra metrics with
 no code change. Their REST API needs a key; the page does not.
 
+**Fetch a model page, not the listing.** `/models` carries a single output-speed figure per model;
+a model page such as `/models/claude-opus-5` adds the datasets that matter — latency and
+end-to-end response time — and its rows are per effort. Those datasets are global leaderboards:
+two different model pages return byte-identical sets, so the URL is an entry point rather than a
+subject. It is `KVASIR_SPEED_URL`, because the page it names could be retired.
+
+Three clocks, with the units quoted from their own dataset descriptions:
+
+| Metric | Their words | Reads as |
+|---|---|---|
+| Output speed | "Output tokens per second" | how fast it types |
+| Latency: Time To First Answer Token | "Seconds to first answer token received · Accounts for reasoning model 'thinking' time" | how long you sit there before it starts |
+| End-to-End Response Time | "Seconds to output 500 tokens, including reasoning model 'thinking' time" | one exchange, start to finish |
+
+The latency charts are stacked bars — input time, thinking time, answer time — so the components
+are added rather than read off a single key, and **a zero is absent, not instant**: an empty bar
+would otherwise make the slowest model look like the fastest.
+
+**Speed carries across efforts; latency does not.** Decode rate is a property of the model and its
+hardware, so one measurement stands for the family, labelled with the effort it came from. Waiting
+time is not: Opus 5 takes 49.7 seconds to its first answer token at max effort and 3.8 at medium.
+Lending one effort's clock to another would be a fiction.
+
 Polled daily; independent timings move with model releases, not hours.
 
 **Coverage is partial, and that shapes the rules.** In September the set carried 11 timed models:

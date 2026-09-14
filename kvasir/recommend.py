@@ -30,6 +30,21 @@ def _usd(uusd: int | None) -> float | None:
     return None if uusd is None else round(uusd / 1_000_000, 4)
 
 
+def _speed_block(model_row: dict | None, variant_row: dict | None) -> dict | None:
+    """What we know about this exact variant's clock, and at what setting we know it."""
+    if not model_row and not variant_row:
+        return None
+    block: dict = {}
+    if model_row:
+        block["tokens_per_second"] = model_row["tokens_per_second"]
+        block["measured_effort"] = model_row["effort"]
+    if variant_row:
+        block["first_answer_seconds"] = variant_row.get("first_answer_seconds")
+        block["end_to_end_seconds"] = variant_row.get("end_to_end_seconds")
+        block["thinking_seconds"] = variant_row.get("thinking_seconds")
+    return block or None
+
+
 def merge(
     cb_rows: list[dict],
     ai_rows: list[dict],
@@ -43,10 +58,19 @@ def merge(
     hiding.
     """
     drift_by_model = {row["model_key"]: row for row in ai_rows}
-    # Speed is a property of the model, not of the effort it was asked for: Artificial
-    # Analysis measures one setting per model, so the figure is attached to every variant
-    # and labelled with the setting it was actually measured at.
-    speed_by_model = {row["model_key"]: row for row in (speed_rows or [])}
+
+    # Two different joins, because the two measurements behave differently. Output speed is
+    # a property of the model and its hardware — reasoning effort changes how long a model
+    # thinks, not how fast it decodes — so it carries across efforts, labelled with the one
+    # it was measured at. Latency does not: Opus 5 waits 49.7 seconds before answering at
+    # max and 3.8 at medium, so lending one effort's clock to another would be a fiction.
+    speed_by_model: dict[str, dict] = {}
+    latency_by_variant: dict[tuple[str, str], dict] = {}
+    for row in speed_rows or []:
+        if row.get("tokens_per_second") and row["model_key"] not in speed_by_model:
+            speed_by_model[row["model_key"]] = row
+        if row.get("first_answer_seconds") or row.get("end_to_end_seconds"):
+            latency_by_variant[(row["model_key"], row["effort"])] = row
     copilot_by_model: dict[str, dict] = {}
     for row in cp_rows:
         tier = (row.get("tier") or "Default").lower()
@@ -82,13 +106,9 @@ def merge(
                     "ci_low": drift.get("ci_low"),
                     "ci_high": drift.get("ci_high"),
                 },
-                "speed": None
-                if key not in speed_by_model
-                else {
-                    "tokens_per_second": speed_by_model[key]["tokens_per_second"],
-                    "measured_effort": speed_by_model[key]["effort"],
-                    "source_name": speed_by_model[key]["source_name"],
-                },
+                "speed": _speed_block(
+                    speed_by_model.get(key), latency_by_variant.get((key, row["effort"]))
+                ),
                 "copilot": None
                 if not copilot
                 else {

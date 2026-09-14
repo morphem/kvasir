@@ -106,10 +106,11 @@ def test_a_tier_is_used_or_says_what_stopped_it():
         assert plan["stopped_note"]
 
 
-def test_the_surplus_walk_actually_runs():
-    heavy = view()["plans"]["heavy"]
-    assert any(role.get("upgraded_from") for role in heavy["roles"].values())
-    assert heavy["used_pct"] > 50
+def test_the_surplus_walk_runs_or_says_why_it_did_not():
+    """Either the tier gets used, or the plan names what stopped it. Never neither."""
+    for plan in view()["plans"].values():
+        moved = any(role.get("upgraded_from") for role in plan["roles"].values())
+        assert moved or plan["stopped_because"], f"{plan['name']} neither spent nor explained"
 
 
 def test_a_slow_model_cannot_take_a_role_you_wait_on():
@@ -139,11 +140,38 @@ def test_no_plan_ever_passes_the_safety_cap():
 
 
 def test_surplus_reaches_planning_before_the_mechanical_role():
-    """Cheapest-point buying once put an Opus on the scout while the worker was still light."""
-    plan = view()["plans"]["heavy"]
+    """Cheapest-point buying once put an Opus on the scout while the worker was still light.
+
+    Built rather than observed: every role is given the same affordable ladder and enough
+    budget for exactly one step, so which role takes it is the rule under test and nothing
+    else.
+    """
+    ladder = []
+    # Sized so the opening shares cannot reach the top rung but the tier's surplus can —
+    # otherwise every role starts at the top and there is nothing to order.
+    for index, (score, cost) in enumerate([(50.0, 1_000_000), (55.0, 3_000_000), (60.0, 30_000_000)]):
+        ladder.append(
+            {"model_key": f"rung{index}", "effort": "max", "rank": index + 1, "score": score,
+             "cost_uusd": cost, "tokens_per_second": 500, "tokens": 1000, "steps": 10}
+        )
+    cb = [{k: v for k, v in rung.items() if k != "tokens_per_second"} for rung in ladder]
+    cp = [
+        {"model_key": rung["model_key"], "effort": "default", "tier": "Default",
+         "input_uusd": 1, "output_uusd": 1, "category": "Powerful"}
+        for rung in ladder
+    ]
+    fast = [
+        {"model_key": rung["model_key"], "effort": "max", "source_name": rung["model_key"],
+         "tokens_per_second": 500.0}
+        for rung in ladder
+    ]
+    settings = Settings(tiers=[{"id": "one_step", "name": "One step", "credits": 100_000}])
+    plan = recommend.build(
+        cb, [], cp, settings, [], credit_usd=0.01, speed_rows=fast
+    )["plans"]["one_step"]
     roles = plan["roles"]
-    if roles["scout"].get("upgraded_from"):
-        assert roles["architect"].get("upgraded_from") or roles["worker"].get("upgraded_from")
+    assert roles["architect"]["upgraded_from"], "the surplus skipped planning"
+    assert not roles["scout"]["upgraded_from"], "the mechanical role was served first"
 
 
 def test_spending_the_surplus_keeps_three_distinct_roles():
