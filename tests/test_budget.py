@@ -59,9 +59,6 @@ def test_a_tight_tier_buys_cheaper_models_than_a_generous_one():
     basic = payload["plans"]["basic"]
     power = payload["plans"]["power"]
     assert basic["roles"]["architect"]["per_task_credits"] < power["roles"]["architect"]["per_task_credits"]
-    out_of_reach = basic["roles"]["architect"]["out_of_reach"]
-    assert out_of_reach  # the budget, not the benchmark, decided
-    assert out_of_reach["per_task_credits"] > out_of_reach["ceiling_credits"]
     assert power["roles"]["architect"]["out_of_reach"] is None  # nothing is out of reach here
     assert basic["month_credits"] < power["month_credits"]
 
@@ -80,14 +77,48 @@ def test_a_tier_too_small_for_anything_says_so():
     assert all("Nothing on the board" in role["why"] for role in roles.values())
 
 
-def test_the_scout_refuses_to_pay_for_quality_it_cannot_use():
-    """Even with a huge budget the mechanical role stays on bargain upgrades."""
+def test_the_mechanical_role_never_outranks_the_planning_one():
+    """However much budget there is, the stack keeps its shape."""
     payload = view(tiers=[{"id": "silly", "name": "Silly", "credits": 5_000_000}])
     plan = payload["plans"]["silly"]
-    scout = plan["roles"]["scout"]["pick"]
-    architect = plan["roles"]["architect"]["pick"]
-    assert scout["cost_uusd"] < architect["cost_uusd"]
-    assert plan["used_pct"] < 5  # an unlimited budget is not an invitation to spend it
+    roles = plan["roles"]
+    assert roles["scout"]["pick"]["score"] <= roles["worker"]["pick"]["score"]
+    assert roles["worker"]["pick"]["score"] <= roles["architect"]["pick"]["score"]
+    assert roles["scout"]["pick"]["cost_uusd"] <= roles["architect"]["pick"]["cost_uusd"]
+    # A budget the board cannot absorb is not spent for the sake of spending it.
+    assert plan["used_pct"] < 100 * budget.MAX_UTILISATION
+
+
+def test_a_tier_is_actually_used_rather_than_handed_back():
+    """Unused credits buy nothing, so a plan that stops at a quarter of the tier is a bug."""
+    payload = view()
+    heavy = payload["plans"]["heavy"]
+    assert heavy["used_pct"] >= 70, f"Heavy only uses {heavy['used_pct']}% of its allowance"
+    assert any(role.get("upgraded_from") for role in heavy["roles"].values())
+
+
+def test_no_plan_ever_passes_the_safety_cap():
+    """The month is a model, not a meter — leave room for a heavier one."""
+    for plan in view()["plans"].values():
+        assert plan["month_credits"] <= plan["credits"] * budget.MAX_UTILISATION + 1
+
+
+def test_surplus_reaches_planning_before_the_mechanical_role():
+    """Cheapest-point buying once put an Opus on the scout while the worker was still light."""
+    plan = view()["plans"]["heavy"]
+    roles = plan["roles"]
+    if roles["scout"].get("upgraded_from"):
+        assert roles["architect"].get("upgraded_from") or roles["worker"].get("upgraded_from")
+
+
+def test_spending_the_surplus_keeps_three_distinct_roles():
+    for plan in view()["plans"].values():
+        picks = [
+            (role["pick"]["key"], role["pick"]["effort"])
+            for role in plan["roles"].values()
+            if role["pick"] and role.get("upgraded_from")
+        ]
+        assert len(picks) == len(set(picks)), "a bought-up role landed on another role's model"
 
 
 def test_assumptions_are_published_with_the_answer():

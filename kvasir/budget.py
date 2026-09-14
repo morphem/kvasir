@@ -36,6 +36,15 @@ BUDGET_SHARES = {"architect": 0.35, "worker": 0.45, "scout": 0.20}
 FAIR_USD_PER_PP = 0.75
 BARGAIN_USD_PER_PP = 0.15
 
+# An allowance is not a saving. Credits left unspent at the end of the month buy nothing —
+# they are pooled back at the billing entity — so once the economical picks are in, the plan
+# keeps climbing until it uses this much of the tier. Stopping at 27% of a 100k allowance was
+# not thrift, it was leaving capability on the table.
+TARGET_UTILISATION = 0.80
+# The month is a model, not a meter. Never plan past this, so a heavier month than assumed
+# does not run the tier dry.
+MAX_UTILISATION = 0.90
+
 CREDIT_USD_FALLBACK = 0.01
 
 # A model whose AI Stupid Level score is sliding, or already flagged, loses a role to a
@@ -131,6 +140,7 @@ def _why(
     per_task: float,
     tasks: float,
     drift_replaced: dict | None = None,
+    upgraded_from: str | None = None,
 ) -> str:
     """Why this model, in this role, at this tier — in the terms the budget is managed in."""
     price = f"{per_task:.0f} credits a task"
@@ -149,12 +159,124 @@ def _why(
             f"Takes only bargain upgrades (at most ${BARGAIN_USD_PER_PP:.2f} per point) — mechanical "
             f"work does not repay more. {price}."
         )
+    if upgraded_from:
+        base += (
+            f" Bought up from {upgraded_from} with the tier's unused credits: this plan aims to "
+            f"use {int(TARGET_UTILISATION * 100)}% of the allowance rather than hand it back."
+        )
     if drift_replaced:
         base += (
             f" Not {drift_replaced['label']}: that one is sliding on AI Stupid Level, and the "
             "swap costs almost nothing."
         )
     return base
+
+
+def _best_upgrade(pick: dict, pool: list[dict], credit_usd: float, allowed=None):
+    """The cheapest quality on offer above the current pick, in credits per point.
+
+    Same discipline as the value ladder, only the question is inverted: not "is this step
+    worth taking" but "if we are going to spend the surplus, where does a point cost least".
+
+    `allowed` filters the rungs this role may take at all. It belongs here rather than in the
+    caller: rejecting only the single cheapest rung and giving up on the role left a tier at
+    61% with three legal upgrades still on the board.
+    """
+    current = credits_for(pick["cost_uusd"], credit_usd)
+    best = None
+    for other in pool:
+        gain = other["score"] - pick["score"]
+        if gain <= 0:
+            continue
+        if allowed and not allowed(other):
+            continue
+        extra = credits_for(other["cost_uusd"], credit_usd) - current
+        per_point = extra / gain
+        if best is None or per_point < best[1]:
+            best = (other, per_point, extra)
+    return best
+
+
+ROLE_ORDER = {"architect": 0, "worker": 1, "scout": 2}
+
+
+def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
+    """Would this upgrade still leave three distinguishable roles?
+
+    Surplus is worth spending, but not on collapsing the board: three cards naming one model
+    tell you nothing, and an Opus running a file rename is money and wall-clock time spent
+    where neither buys anything. So a role may not climb onto another role's model, and the
+    ranking architect >= worker >= scout has to survive the step.
+    """
+    for other_role, other in state.items():
+        if other_role == role or not other["pick"]:
+            continue
+        pick = other["pick"]
+        if candidate["key"] == pick["key"] and candidate["effort"] == pick["effort"]:
+            return False
+        if ROLE_ORDER[role] < ROLE_ORDER[other_role] and candidate["score"] < pick["score"]:
+            return False
+        if ROLE_ORDER[role] > ROLE_ORDER[other_role] and candidate["score"] > pick["score"]:
+            return False
+    return True
+
+
+def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_trusted: bool) -> list[dict]:
+    """Climb from the economical picks until the tier is properly used.
+
+    Role shares decide the opening position; from there the only ceiling is the tier itself,
+    because a share is an allocation and the allowance is what actually runs out.
+
+    The surplus is spent **in role order** — architect, then worker, then scout — rather than
+    wherever a point is cheapest. Cheapest-point buying put an Opus on the mechanical role
+    while the worker was still on a light model: quality converts into value at the top of
+    the stack, and the scout should only get expensive when there is genuinely nothing else
+    left to do with the money.
+    """
+    if not tier_credits:
+        return []
+    target = tier_credits * TARGET_UTILISATION
+    cap = tier_credits * MAX_UTILISATION
+    steps: list[dict] = []
+
+    def projected() -> float:
+        return sum(
+            credits_for(slot["pick"]["cost_uusd"], credit_usd) * slot["billable_tasks"]
+            for slot in state.values()
+            if slot["pick"]
+        )
+
+    for role in ("architect", "worker", "scout"):
+        slot = state[role]
+        for _ in range(12):  # the board is small; this is a guard, not a budget
+            spent = projected()
+            if spent >= target or not slot["pick"]:
+                break
+            headroom = cap - spent
+            found = _best_upgrade(
+                slot["pick"],
+                slot["surplus_pool"],
+                credit_usd,
+                allowed=lambda candidate, slot=slot, headroom=headroom, role=role: (
+                    _keeps_roles_apart(state, role, candidate)
+                    and (
+                        credits_for(candidate["cost_uusd"], credit_usd)
+                        - credits_for(slot["pick"]["cost_uusd"], credit_usd)
+                    )
+                    * slot["billable_tasks"]
+                    <= headroom
+                ),
+            )
+            if not found:
+                break
+            chosen = found[0]
+            upgraded, _ = _avoid_drift(chosen, slot["surplus_pool"], drift_trusted)
+            previous = slot["pick"]
+            if upgraded["key"] == previous["key"] and upgraded["effort"] == previous["effort"]:
+                break  # the drift veto sent us back where we started
+            slot["pick"] = upgraded
+            steps.append({"role": role, "from": previous["label"], "to": upgraded["label"]})
+    return steps
 
 
 def plan_for_tier(
@@ -171,6 +293,8 @@ def plan_for_tier(
     total_credits = 0.0
     board_best = max(candidates, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
 
+    # Phase one: what each role would take on economics alone, inside its own share.
+    state: dict[str, dict] = {}
     for role in ("architect", "worker", "scout"):
         share_credits = tier["credits"] * BUDGET_SHARES[role]
         billable_tasks = monthly[role] * OVERHEAD
@@ -188,6 +312,28 @@ def plan_for_tier(
             pick, drift_replaced = _avoid_drift(pick, pool, drift_trusted)
         else:
             drift_replaced = None
+        state[role] = {
+            "pick": pick,
+            "baseline": pick,
+            "drift_replaced": drift_replaced,
+            "pool": pool,
+            # Spending the surplus is bounded by the tier, not by the opening allocation.
+            "surplus_pool": candidates if role == "architect" else frontier,
+            "share_credits": share_credits,
+            "billable_tasks": billable_tasks,
+            "per_task": per_task,
+        }
+
+    # Phase two: an unused credit buys nothing, so climb until the tier is properly used.
+    upgrades = _spend_the_tier(state, tier["credits"], credit_usd, drift_trusted)
+    upgraded_roles = {step["role"]: step["from"] for step in upgrades}
+
+    for role in ("architect", "worker", "scout"):
+        slot = state[role]
+        pick, drift_replaced = slot["pick"], slot["drift_replaced"]
+        share_credits, billable_tasks, per_task = (
+            slot["share_credits"], slot["billable_tasks"], slot["per_task"]
+        )
         if pick is None:
             # Nothing on the board fits this share — say so instead of inventing a pick.
             roles[role] = {
@@ -212,18 +358,30 @@ def plan_for_tier(
         # economic reasons, not budget ones — telling them about a model they deliberately
         # did not want would be noise.
         out_of_reach = None
-        if role == "architect" and board_best is not None and board_best is not pick:
+        if role == "architect" and board_best is not None and board_best["key"] != pick["key"]:
             best_price = credits_for(board_best["cost_uusd"], credit_usd)
-            if best_price is not None and best_price > per_task:
+            # The ceiling that matters is what the plan could still pay after the other roles
+            # are served — not the opening share, which the surplus walk is allowed to pass.
+            others = sum(
+                credits_for(other["pick"]["cost_uusd"], credit_usd) * other["billable_tasks"]
+                for name, other in state.items()
+                if name != role and other["pick"]
+            )
+            reachable = (tier["credits"] * MAX_UTILISATION - others) / billable_tasks
+            if best_price is not None and best_price > reachable:
                 out_of_reach = {
                     "label": board_best["label"],
                     "score": board_best["score"],
                     "per_task_credits": round(best_price),
-                    "ceiling_credits": round(per_task),
+                    "ceiling_credits": round(max(reachable, 0)),
                 }
         roles[role] = {
             "pick": pick,
-            "why": _why(role, pick, per_task, per_task_credits, monthly[role], drift_replaced),
+            "why": _why(
+                role, pick, per_task, per_task_credits, monthly[role], drift_replaced,
+                upgraded_roles.get(role),
+            ),
+            "upgraded_from": upgraded_roles.get(role),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
             "out_of_reach": out_of_reach,
             "share_credits": round(share_credits),
@@ -293,4 +451,6 @@ def assumptions(credit_usd: float) -> dict:
         "budget_shares": BUDGET_SHARES,
         "fair_usd_per_pp": FAIR_USD_PER_PP,
         "bargain_usd_per_pp": BARGAIN_USD_PER_PP,
+        "target_utilisation": TARGET_UTILISATION,
+        "max_utilisation": MAX_UTILISATION,
     }

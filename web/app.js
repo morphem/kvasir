@@ -403,7 +403,10 @@ function renderBudget(view) {
     `${assumptions.tasks_per_month} tasks a month (${assumptions.tasks_by_role.architect} planning, ` +
     `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
     `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
-    `The budget is split ${Math.round(assumptions.budget_shares.architect * 100)}/` +
+    `The plan then spends the surplus up to ${Math.round(assumptions.target_utilisation * 100)}% of the ` +
+    `tier and never plans past ${Math.round(assumptions.max_utilisation * 100)}% — an unused credit ` +
+    `buys nothing, and the month is a model rather than a meter. ` +
+    `The opening split is ${Math.round(assumptions.budget_shares.architect * 100)}/` +
     `${Math.round(assumptions.budget_shares.worker * 100)}/` +
     `${Math.round(assumptions.budget_shares.scout * 100)} between the roles. ` +
     `Code completions are not billed in credits, so they are not counted here.`;
