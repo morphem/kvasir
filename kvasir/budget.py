@@ -5,8 +5,9 @@ GitHub bills Copilot in AI credits, and its own docs put the rate in one sentenc
 that sentence off the pricing page rather than trusting a constant here, so if GitHub ever
 changes the rate the page notices instead of quietly lying.
 
-That single fact is what makes CursorBench's dollar-per-task usable as a credit budget:
-one task at $2.31 is 231 credits, and a tier is just a number of credits per month.
+That single fact is what makes Artificial Analysis's dollar-per-task usable as a credit
+budget: one Intelligence Index task at $2.31 is 231 credits, and a tier is just a number of
+credits per month.
 
 The month is modelled, not measured — nobody has a per-task meter — so every assumption
 below is a named constant that the page prints next to the result. The profile is the
@@ -29,25 +30,37 @@ OVERHEAD = 1.15
 # gets the largest slice despite being the smallest slice of tasks.
 BUDGET_SHARES = {"architect": 0.35, "worker": 0.45, "scout": 0.20}
 
-# Upgrade discipline, in dollars per percentage point of CursorBench score. The worker walks
+# Upgrade discipline, in dollars per point of Intelligence Index. The worker walks
 # up the ladder while the next step is at most "fair"; the scout only takes bargains, because
 # on mechanical work the extra quality is not worth anything; the architect ignores both and
 # simply buys the best its share can afford.
 FAIR_USD_PER_PP = 0.75
 BARGAIN_USD_PER_PP = 0.15
 
+# Patience: the longest wait before the first answer token, in seconds, that a loop role may
+# put you through. The worker and the scout are waited on repeatedly, all day, so a model that
+# thinks for two minutes before it types does not belong there whatever it scores. The
+# architect is exempt: for planning you wait once, on purpose.
+#
+# The wait is the variant's own — Artificial Analysis times every effort separately, and
+# reasoning effort *is* the waiting (Opus 5.5 answers in 13 s at high and 170 s at xhigh).
+# It replaced a tokens-per-second floor: once the source covered every model, a typing-speed
+# floor of 80 barred Sonnet 5, Terra and Sol outright, while saying nothing about the two
+# minutes a max-effort Luna sits silent. The page switches between these like it switches tiers.
+#
+# Unmeasured is not slow. A variant this source has not timed passes, for the same reason an
+# unmeasured model cannot win a drift veto: absence of evidence decides nothing.
+PATIENCE = {
+    "fast": {"label": "Fast", "worker": 30, "scout": 10},
+    "balanced": {"label": "Balanced", "worker": 90, "scout": 30},
+    "any": {"label": "Any wait", "worker": None, "scout": None},
+}
+DEFAULT_PATIENCE = "balanced"
+
 # An allowance is not a saving. Credits left unspent at the end of the month buy nothing —
 # they are pooled back at the billing entity — so once the economical picks are in, the plan
 # keeps climbing until it uses this much of the tier. Stopping at 27% of a 100k allowance was
 # not thrift, it was leaving capability on the table.
-# Artificial Analysis, output tokens per second. The worker and the scout are loop roles —
-# you wait on them, repeatedly, all day — so a measured-slow model does not belong there
-# whatever it scores. The architect is exempt: for planning you wait once, on purpose.
-#
-# Unmeasured is not slow. A model this source has not timed passes the floor, for the same
-# reason an unmeasured model cannot win a drift veto: absence of evidence decides nothing.
-SPEED_FLOOR_TPS = 80
-
 TARGET_UTILISATION = 0.80
 # The month is a model, not a meter. Never plan past this, so a heavier month than assumed
 # does not run the tier dry.
@@ -68,16 +81,27 @@ def drifting(candidate: dict) -> bool:
     return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
 
 
-def fast_enough(candidate: dict, floor: float = SPEED_FLOOR_TPS) -> bool:
+def wait_of(candidate: dict) -> float | None:
+    """Seconds to the first answer token, for this exact variant — or None if nobody timed it."""
     speed = candidate.get("speed")
-    if not speed or not speed.get("tokens_per_second"):
-        return True
-    return speed["tokens_per_second"] >= floor
+    return speed.get("first_answer_seconds") if speed else None
 
 
-def measured_speed(candidate: dict) -> float | None:
-    speed = candidate.get("speed")
-    return speed.get("tokens_per_second") if speed else None
+def quick_enough(candidate: dict, ceiling: float | None) -> bool:
+    wait = wait_of(candidate)
+    return ceiling is None or wait is None or wait <= ceiling
+
+
+def frontier(candidates: list[dict]) -> list[dict]:
+    """The cost/quality frontier: models nothing else beats on price and score at once."""
+    ordered = sorted(candidates, key=lambda c: (c["cost_uusd"], -c["score"]))
+    out: list[dict] = []
+    best = float("-inf")
+    for candidate in ordered:
+        if candidate["score"] > best:
+            out.append(candidate)
+            best = candidate["score"]
+    return out
 
 
 def steady(candidate: dict) -> bool:
@@ -108,14 +132,14 @@ def _fits(candidate: dict, per_task_credits: float, credit_usd: float) -> bool:
     return price is not None and price <= per_task_credits
 
 
-def _walk_ladder(frontier: list[dict], per_task_credits: float, credit_usd: float, max_usd_per_pp: float):
+def _walk_ladder(rungs: list[dict], per_task_credits: float, credit_usd: float, max_usd_per_pp: float):
     """Climb the cost/quality frontier while each step is affordable and worth its price.
 
     Starting at the cheapest model, take the next step only if the monthly share still
     covers it and the extra quality costs no more than `max_usd_per_pp` per point. This is
     the same discipline the value ladder on the page shows, applied to a budget.
     """
-    affordable = [c for c in frontier if _fits(c, per_task_credits, credit_usd)]
+    affordable = [c for c in rungs if _fits(c, per_task_credits, credit_usd)]
     if not affordable:
         return None
     pick = affordable[0]
@@ -162,6 +186,7 @@ def _why(
     drift_replaced: dict | None = None,
     upgraded_from: str | None = None,
     speed_blocked: dict | None = None,
+    ceiling: float | None = None,
 ) -> str:
     """Why this model, in this role, at this tier — in the terms the budget is managed in."""
     # Terse on purpose. The card is read at a glance and the rules are spelled out in the
@@ -177,8 +202,9 @@ def _why(
         base += f" Bought up from {upgraded_from} with the tier's unused credits."
     if speed_blocked:
         base += (
-            f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}%): "
-            f"{speed_blocked['tokens_per_second']:.0f} tok/s, under the {SPEED_FLOOR_TPS:.0f} floor."
+            f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}): "
+            f"{speed_blocked['wait_seconds']:.0f} s to its first answer, over the {ceiling:.0f} s "
+            "this patience allows."
         )
     if drift_replaced:
         base += f" Not {drift_replaced['label']} — sliding on AI Stupid Level."
@@ -219,7 +245,10 @@ def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
     Surplus is worth spending, but not on collapsing the board: three cards naming one model
     tell you nothing, and an Opus running a file rename is money and wall-clock time spent
     where neither buys anything. So a role may not climb onto another role's model, and the
-    ranking architect >= worker >= scout has to survive the step.
+    ranking architect >= worker >= scout has to survive the step — on score, and on price
+    per task: a scout that costs more than the worker for less quality is a worse worker, not
+    a better scout. (Filtering loop roles by patience made that reachable: the quickest
+    frontier can hold an older, dearer model.)
     """
     for other_role, other in state.items():
         if other_role == role or not other["pick"]:
@@ -229,14 +258,16 @@ def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
             return False
         if ROLE_ORDER[role] < ROLE_ORDER[other_role] and candidate["score"] < pick["score"]:
             return False
-        if ROLE_ORDER[role] > ROLE_ORDER[other_role] and candidate["score"] > pick["score"]:
+        if ROLE_ORDER[role] > ROLE_ORDER[other_role] and (
+            candidate["score"] > pick["score"] or candidate["cost_uusd"] > pick["cost_uusd"]
+        ):
             return False
     return True
 
 
 STOP_REASONS = {
     "target": "the plan reached its target share of the tier",
-    "speed": "every model left is too slow for a role you wait on repeatedly",
+    "speed": "every better model makes you wait longer than this patience setting allows",
     "roles": "every upgrade left would collapse two roles onto one model",
     "cap": "the next step up would pass the safety margin",
     "board": "nothing better exists on the board",
@@ -265,7 +296,7 @@ def _why_stopped(state: dict, credit_usd: float, spent: float, target: float, ca
             ) * slot["billable_tasks"]
             if spent + extra > cap:
                 blocked_by_cap = True
-            elif role != "architect" and not fast_enough(candidate):
+            elif not quick_enough(candidate, slot["ceiling"]):
                 blocked_by_speed = True
             elif not _keeps_roles_apart(state, role, candidate):
                 blocked_by_roles = True
@@ -340,19 +371,50 @@ def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_tru
     return steps
 
 
+def _loop_pool(candidates: list[dict], ceiling: float | None) -> list[dict]:
+    """The frontier a loop role climbs: rebuilt without the variants too slow to wait on.
+
+    Filtering the finished frontier would be wrong — a slow rung removed from it can hide a
+    quick variant it used to dominate, and that variant is exactly the one this role wants.
+    """
+    return frontier([c for c in candidates if quick_enough(c, ceiling)])
+
+
+def _reference(candidates: list[dict], credit_usd: float, patience: dict) -> dict:
+    """What each role would run with no budget at all — the merit-only shortlist.
+
+    The same rules as the plan with the tier taken away: the architect takes the best on the
+    board, the loop roles climb their ladders as far as the per-point discipline lets them.
+    Its cost is the number that says whether the tier, and not the data, picks your models.
+    """
+    out: dict[str, dict | None] = {
+        "architect": max(candidates, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
+    }
+    for role, ceiling in (("worker", FAIR_USD_PER_PP), ("scout", BARGAIN_USD_PER_PP)):
+        out[role] = _walk_ladder(
+            _loop_pool(candidates, patience[role]), float("inf"), credit_usd, ceiling
+        )
+    return out
+
+
 def plan_for_tier(
     tier: dict,
     candidates: list[dict],
-    frontier: list[dict],
     credit_usd: float,
-    reference: dict,
+    patience_id: str = DEFAULT_PATIENCE,
     drift_trusted: bool = True,
 ) -> dict:
-    """Fill the three roles under one tier's monthly credit budget."""
+    """Fill the three roles under one tier's monthly credit budget, at one patience setting.
+
+    `candidates` must all carry a cost: a variant nobody has priced cannot be budgeted, so it
+    never reaches this function.
+    """
+    patience = PATIENCE[patience_id]
     monthly = tasks_per_month()
     roles = {}
     total_credits = 0.0
     board_best = max(candidates, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
+    rungs = frontier(candidates)
 
     # Phase one: what each role would take on economics alone, inside its own share.
     state: dict[str, dict] = {}
@@ -360,6 +422,7 @@ def plan_for_tier(
         share_credits = tier["credits"] * BUDGET_SHARES[role]
         billable_tasks = monthly[role] * OVERHEAD
         per_task = share_credits / billable_tasks if billable_tasks else 0.0
+        ceiling = patience.get(role)
 
         speed_blocked = None
         if role == "architect":
@@ -367,16 +430,16 @@ def plan_for_tier(
             pool = [c for c in candidates if _fits(c, per_task, credit_usd)]
             surplus_pool = candidates
         else:
-            ceiling = FAIR_USD_PER_PP if role == "worker" else BARGAIN_USD_PER_PP
-            quick = [c for c in frontier if fast_enough(c)]
-            pick = _walk_ladder(quick, per_task, credit_usd, ceiling)
+            per_point = FAIR_USD_PER_PP if role == "worker" else BARGAIN_USD_PER_PP
+            quick = _loop_pool(candidates, ceiling)
+            pick = _walk_ladder(quick, per_task, credit_usd, per_point)
             pool = [c for c in quick if _fits(c, per_task, credit_usd)]
             surplus_pool = quick
-            # What the floor cost this role, so the card can say it rather than just differ.
+            # What the patience setting cost this role, so the card can say it, not just differ.
             ignored = [
                 c
-                for c in frontier
-                if not fast_enough(c) and _fits(c, per_task, credit_usd)
+                for c in rungs
+                if not quick_enough(c, ceiling) and _fits(c, per_task, credit_usd)
                 and (pick is None or c["score"] > pick["score"])
             ]
             if ignored:
@@ -384,7 +447,7 @@ def plan_for_tier(
                 speed_blocked = {
                     "label": best_ignored["label"],
                     "score": best_ignored["score"],
-                    "tokens_per_second": measured_speed(best_ignored),
+                    "wait_seconds": wait_of(best_ignored),
                 }
         if pick is not None:
             # The budget decides what is affordable; drift still decides what is sane.
@@ -393,12 +456,11 @@ def plan_for_tier(
             drift_replaced = None
         state[role] = {
             "pick": pick,
-            "baseline": pick,
             "drift_replaced": drift_replaced,
-            "pool": pool,
             # Spending the surplus is bounded by the tier, not by the opening allocation.
             "surplus_pool": surplus_pool,
-            "full_pool": candidates if role == "architect" else frontier,
+            "full_pool": candidates if role == "architect" else rungs,
+            "ceiling": ceiling,
             "speed_blocked": speed_blocked,
             "share_credits": share_credits,
             "billable_tasks": billable_tasks,
@@ -413,7 +475,6 @@ def plan_for_tier(
     for role in ("architect", "worker", "scout"):
         slot = state[role]
         pick, drift_replaced = slot["pick"], slot["drift_replaced"]
-        speed_blocked = slot["speed_blocked"]
         share_credits, billable_tasks, per_task = (
             slot["share_credits"], slot["billable_tasks"], slot["per_task"]
         )
@@ -462,12 +523,12 @@ def plan_for_tier(
             "pick": pick,
             "why": _why(
                 role, pick, per_task, per_task_credits, monthly[role], drift_replaced,
-                upgraded_roles.get(role), speed_blocked,
+                upgraded_roles.get(role), slot["speed_blocked"], slot["ceiling"],
             ),
             "upgraded_from": upgraded_roles.get(role),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
-            "speed_blocked": speed_blocked,
-            "tokens_per_second": measured_speed(pick),
+            "speed_blocked": slot["speed_blocked"],
+            "wait_ceiling_seconds": slot["ceiling"],
             "out_of_reach": out_of_reach,
             "share_credits": round(share_credits),
             "per_task_budget_credits": round(per_task),
@@ -485,17 +546,17 @@ def plan_for_tier(
         if low and high and low["key"] == high["key"] and low["effort"] == high["effort"]:
             roles[lower]["same_as"] = upper
 
-    # What the unconstrained shortlist would cost here — the number that says whether the
-    # tier, and not the benchmark, is the thing deciding your models.
+    # What the merit-only shortlist would cost here — the number that says whether the tier,
+    # and not the benchmark, is the thing deciding your models.
     reference_credits = 0.0
-    for role, verdict in reference.items():
-        pick = verdict.get("pick")
+    for role, pick in _reference(candidates, credit_usd, patience).items():
         price = credits_for(pick["cost_uusd"], credit_usd) if pick else None
         if price is not None:
             reference_credits += price * monthly[role] * OVERHEAD
 
     return {
         **tier,
+        "patience": patience_id,
         "usd": round(tier["credits"] * credit_usd, 2),
         "roles": roles,
         "month_credits": round(total_credits),
@@ -513,13 +574,15 @@ def plan_for_tier(
 def plans(
     tiers: list[dict],
     candidates: list[dict],
-    frontier: list[dict],
     credit_usd: float,
-    reference: dict,
     drift_trusted: bool = True,
 ) -> dict:
+    """Every tier at every patience setting: plans[tier][patience]. Nine small plans."""
     return {
-        tier["id"]: plan_for_tier(tier, candidates, frontier, credit_usd, reference, drift_trusted)
+        tier["id"]: {
+            patience_id: plan_for_tier(tier, candidates, credit_usd, patience_id, drift_trusted)
+            for patience_id in PATIENCE
+        }
         for tier in tiers
     }
 
@@ -538,7 +601,8 @@ def assumptions(credit_usd: float) -> dict:
         "budget_shares": BUDGET_SHARES,
         "fair_usd_per_pp": FAIR_USD_PER_PP,
         "bargain_usd_per_pp": BARGAIN_USD_PER_PP,
-        "speed_floor_tps": SPEED_FLOOR_TPS,
+        "patience": PATIENCE,
+        "default_patience": DEFAULT_PATIENCE,
         "target_utilisation": TARGET_UTILISATION,
         "max_utilisation": MAX_UTILISATION,
     }

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from kvasir import db
 from kvasir.api import app
-from kvasir.collectors import copilot, cursorbench, speed, stupidlevel
+from kvasir.collectors import artificialanalysis, copilot, stupidlevel
 from kvasir.config import settings
 
 
@@ -13,10 +13,9 @@ def seed():
     """Fill the archive the way a real collection round would — snapshot plus run log."""
     db.init(settings.db_path)
     for module, name in (
-        (cursorbench, "cursorbench.html"),
+        (artificialanalysis, "artificialanalysis-model-page.html"),
         (copilot, "copilot-models-and-pricing.html"),
         (stupidlevel, "stupidlevel-scores.json"),
-        (speed, "artificialanalysis-models.html"),
     ):
         rows, meta = module.parse(fixture(name))
         started = db.now_iso()
@@ -36,14 +35,15 @@ def test_health_reports_every_source():
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert set(body["sources"]) == {"cursorbench", "stupidlevel", "copilot", "speed"}
+    assert set(body["sources"]) == {"artificialanalysis", "stupidlevel", "copilot"}
 
 
 def test_view_is_one_consistent_payload():
     body = client().get("/api/view").json()
     assert body["ready"] is True
-    assert body["benchmark_version"] == "3.2"
-    assert set(body["verdicts"]) == {"architect", "worker", "scout"}
+    assert body["benchmark_version"] == "4.3"
+    assert set(body["plans"]) == {"basic", "heavy", "power"}
+    assert body["default_patience"] in {p["id"] for p in body["patience"]}
     assert body["tasks"] and body["ladder"] and body["drift"]
     assert body["archive"]["snapshots"] >= 3
     for source in body["sources"].values():
@@ -67,8 +67,8 @@ def test_the_default_board_only_holds_models_we_can_start():
     for candidate in body["candidates"]:
         assert candidate["copilot"], f"{candidate['label']} is not sold by Copilot"
         assert candidate["available"] is True
-    for plan in body["plans"].values():
-        for role in plan["roles"].values():
+    for by_patience in body["plans"].values():
+        for role in (r for plan in by_patience.values() for r in plan["roles"].values()):
             if role.get("pick"):
                 assert role["pick"]["copilot"], f"{role['pick']['label']} cannot be started here"
     for candidate in body["excluded"]:
@@ -133,11 +133,13 @@ def test_recommendations_are_served_from_the_archive():
     assert recommend.capture(settings.db_path, settings) is True
     body = api.get("/api/recommendations").json()
     assert len(body["points"]) == 1
-    verdicts = body["points"][0]["verdicts"]
-    assert set(verdicts) == {"architect", "worker", "scout"}
-    for verdict in verdicts.values():
-        assert verdict["pick"]["key"]
-        assert verdict["pick"]["effort"]
+    plans = body["points"][0]["plans"]
+    assert set(plans) == {"basic", "heavy", "power"}
+    for by_patience in plans.values():
+        for roles in by_patience.values():
+            assert set(roles) == {"architect", "worker", "scout"}
+            for pick in roles.values():
+                assert pick["key"] and pick["effort"]
 
 
 def test_the_api_key_survives_a_container_rebuild():

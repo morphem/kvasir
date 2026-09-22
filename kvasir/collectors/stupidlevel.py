@@ -7,7 +7,7 @@ quietly getting worse under a name that did not change.
 It is a JSON API (the site is open source), so there is nothing to scrape. Effort is not
 published per score — the models flagged `usesReasoningEffort` are run at the provider
 default — and the UI says so rather than implying these numbers are comparable to
-CursorBench's per-effort rows.
+Artificial Analysis's per-effort rows.
 """
 
 from __future__ import annotations

@@ -20,8 +20,8 @@ ROWS = [
 
 def test_identical_readings_are_stored_once():
     path = fresh_db()
-    first, changed_first = db.archive(path, "cursorbench", ROWS, {"benchmark_version": "3.2"})
-    second, changed_second = db.archive(path, "cursorbench", ROWS, {"benchmark_version": "3.2"})
+    first, changed_first = db.archive(path, "artificialanalysis", ROWS, {"benchmark_version": "4.3"})
+    second, changed_second = db.archive(path, "artificialanalysis", ROWS, {"benchmark_version": "4.3"})
     assert changed_first is True and changed_second is False
     assert first == second
     assert db.archive_stats(path)["snapshots"] == 1
@@ -29,21 +29,21 @@ def test_identical_readings_are_stored_once():
 
 def test_a_changed_reading_becomes_a_new_snapshot():
     path = fresh_db()
-    db.archive(path, "cursorbench", ROWS, {})
+    db.archive(path, "artificialanalysis", ROWS, {})
     moved = [dict(ROWS[0], score=69.1), ROWS[1]]
-    _, changed = db.archive(path, "cursorbench", moved, {})
+    _, changed = db.archive(path, "artificialanalysis", moved, {})
     assert changed is True
     assert db.archive_stats(path)["snapshots"] == 2
-    rows, meta = db.latest(path, "cursorbench")
+    rows, meta = db.latest(path, "artificialanalysis")
     assert rows[0]["score"] == 69.1
     assert meta["captured_at"]
 
 
 def test_history_returns_the_series_for_one_model():
     path = fresh_db()
-    db.archive(path, "cursorbench", ROWS, {})
-    db.archive(path, "cursorbench", [dict(ROWS[0], score=68.0), ROWS[1]], {})
-    points = db.history(path, "cursorbench", "opus-5", "max", days=1)
+    db.archive(path, "artificialanalysis", ROWS, {})
+    db.archive(path, "artificialanalysis", [dict(ROWS[0], score=68.0), ROWS[1]], {})
+    points = db.history(path, "artificialanalysis", "opus-5", "max", days=1)
     assert [point["score"] for point in points] == [70.0, 68.0]
 
 
@@ -63,8 +63,8 @@ def test_drift_points_are_idempotent_and_summarised():
 
 def test_a_failed_run_is_recorded_and_visible():
     path = fresh_db()
-    db.log_run(path, "cursorbench", db.now_iso(), False, False, 0, "HTTPError: 503", None)
-    status = db.source_status(path)["cursorbench"]
+    db.log_run(path, "artificialanalysis", db.now_iso(), False, False, 0, "HTTPError: 503", None)
+    status = db.source_status(path)["artificialanalysis"]
     assert status["failures"] == 1
     assert status["last_error"].startswith("HTTPError")
 

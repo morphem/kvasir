@@ -13,15 +13,19 @@ tests/fixtures/, which is the only defence against a source silently changing sh
 
 from __future__ import annotations
 
-from . import copilot, cursorbench, speed, stupidlevel
+from . import artificialanalysis, copilot, stupidlevel
 
-MODULES = {m.SOURCE: m for m in (cursorbench, stupidlevel, copilot, speed)}
+MODULES = {m.SOURCE: m for m in (artificialanalysis, stupidlevel, copilot)}
 
 SOURCE_LABELS = {
-    "cursorbench": "CursorBench",
+    "artificialanalysis": "Artificial Analysis",
     "stupidlevel": "AI Stupid Level",
     "copilot": "GitHub Copilot",
-    "speed": "Artificial Analysis",
 }
 
-__all__ = ["MODULES", "SOURCE_LABELS", "copilot", "cursorbench", "speed", "stupidlevel"]
+# Sources that are no longer polled but whose readings stay in the archive. CursorBench scored
+# the board until 2026-09-22 and the old speed reader timed it; their snapshots remain readable
+# through /api/history, because a number the page once showed must stay findable.
+RETIRED_SOURCES = {"cursorbench": "CursorBench", "speed": "Artificial Analysis (JSON-LD speed)"}
+
+__all__ = ["MODULES", "RETIRED_SOURCES", "SOURCE_LABELS", "artificialanalysis", "copilot", "stupidlevel"]

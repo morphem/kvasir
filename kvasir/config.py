@@ -77,14 +77,14 @@ class Settings:
     port: int = _int("KVASIR_PORT", 8688)
 
     # Poll intervals, in minutes. AI Stupid Level re-scores hourly; the other two
-    # are documentation-shaped and move on the scale of days.
+    # move with model releases, on the scale of days.
     # Hourly until the source went key-only; the free tier now allows 10 requests a day, so
     # six-a-day leaves room for retries. Lower it if a paid key ever arrives.
     interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 240)
-    interval_cursorbench: int = _int("KVASIR_INTERVAL_CURSORBENCH", 720)
+    # Artificial Analysis re-runs a model when it ships, and prices a new release a few days
+    # after timing it — twice a day is enough to catch both without leaning on their site.
+    interval_aa: int = _int("KVASIR_INTERVAL_AA", 720)
     interval_copilot: int = _int("KVASIR_INTERVAL_COPILOT", 720)
-    # Independent speed measurements change on the scale of model releases, not hours.
-    interval_speed: int = _int("KVASIR_INTERVAL_SPEED", 1440)
     # AI Stupid Level's published run history, which draws the sparklines. Daily was too
     # slow: the headline score moves hourly, so the chart beside it was up to a day behind.
     interval_backfill: int = _int("KVASIR_INTERVAL_BACKFILL", 360)
@@ -98,7 +98,7 @@ class Settings:
     disabled_models: list[str] = field(
         default_factory=lambda: _csv(
             "KVASIR_DISABLED_MODELS",
-            os.environ.get("KVASIR_HIDDEN_MODELS", "grok,fable,kimi-k2.7"),
+            os.environ.get("KVASIR_HIDDEN_MODELS", "grok,fable,kimi-k2.7,gpt-6-astra"),
         )
     )
 
@@ -108,11 +108,9 @@ class Settings:
         default_factory=lambda: _tiers("KVASIR_TIERS", "Basic:13000,Heavy:100000,Power:200000")
     )
     default_tier: str = os.environ.get("KVASIR_DEFAULT_TIER", "heavy")
-
-    # Tier thresholds, in USD per CursorBench task. Shown in the UI next to the verdict.
-    worker_max_cost_usd: float = float(os.environ.get("KVASIR_WORKER_MAX_COST", "2.50"))
-    scout_max_cost_usd: float = float(os.environ.get("KVASIR_SCOUT_MAX_COST", "0.60"))
-    architect_score_slack_pp: float = float(os.environ.get("KVASIR_ARCHITECT_SLACK", "3.0"))
+    # How long a loop role may keep you waiting, when a visitor has never picked: one of the
+    # names in budget.PATIENCE (fast, balanced, any).
+    default_patience: str = os.environ.get("KVASIR_DEFAULT_PATIENCE", "balanced")
 
     # AI Stupid Level closed its scores endpoint behind a key in September 2026. Without
     # one the page keeps the last good scores and says how old they are; with one it polls

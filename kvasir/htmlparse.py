@@ -1,9 +1,8 @@
 """Two tiny HTML readers, built on the standard library.
 
-Both sources we scrape are documentation-shaped pages, not APIs, so the parsers are
-deliberately dumb: GitHub's page is real <table> markup, and CursorBench's leaderboard is
-a CSS grid whose numbers only exist as text. Pulling in a parser library to read them
-would not make either one less brittle.
+GitHub's pricing page is documentation-shaped, not an API, so the reader is deliberately
+dumb: the prices are real <table> markup, and the credit rate is one sentence of text.
+Pulling in a parser library to read them would not make either one less brittle.
 """
 
 from __future__ import annotations

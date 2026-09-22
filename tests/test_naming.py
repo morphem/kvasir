@@ -22,6 +22,12 @@ from kvasir.naming import label, model_key, split_effort, vendor_of
         # API names carry a release date, docs names do not
         ("claude-sonnet-4-5-20250929", "sonnet-4.5", "default"),
         ("Claude Opus 4.5", "opus-4.5", "default"),
+        # Artificial Analysis names releases, and its older ones put the version first
+        ("Claude Opus 5.5", "opus-5.5", "default"),
+        ("GPT-6 Luna", "gpt-6-luna", "default"),
+        ("GPT-6 Sol", "gpt-6-sol", "default"),
+        ("Claude 4.5 Haiku", "haiku-4.5", "default"),
+        ("Claude Haiku 4.5", "haiku-4.5", "default"),
     ],
 )
 def test_split_and_key(raw, expected_key, expected_effort):

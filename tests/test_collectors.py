@@ -7,42 +7,66 @@ and the parser keeps returning plausible-looking numbers.
 import pytest
 from conftest import fixture
 
-from kvasir.collectors import copilot, cursorbench, stupidlevel
+from kvasir.collectors import artificialanalysis, copilot, stupidlevel
+
+AA_PAGE = "artificialanalysis-model-page.html"
 
 
-def test_cursorbench_parses_every_row():
-    rows, meta = cursorbench.parse(fixture("cursorbench.html"))
-    assert len(rows) == 56
-    assert meta["benchmark_version"] == "3.2"
-    assert [row["rank"] for row in rows] == list(range(1, 57))
-    assert all(0 < row["score"] <= 100 for row in rows)
-    assert all(row["cost_uusd"] > 0 and row["tokens"] > 0 and row["steps"] > 0 for row in rows)
+def test_artificialanalysis_reads_the_whole_board():
+    """Every model page carries every variant — not just the top twenty of a chart."""
+    rows, meta = artificialanalysis.parse(fixture(AA_PAGE))
+    assert meta["benchmark_version"] == "4.3"
+    assert meta["row_count"] == len(rows) == 593
+    assert meta["priced_count"] == 142
+    assert len({(row["model_key"], row["effort"]) for row in rows}) == len(rows)
 
 
-def test_cursorbench_model_name_ending_in_a_digit():
-    """"Composer 2.5" + "56.1%" arrive glued together — the split must not eat the version."""
-    rows, _ = cursorbench.parse(fixture("cursorbench.html"))
-    composer = next(row for row in rows if row["model_key"] == "composer-2.5")
-    assert composer["score"] == 56.1
-    assert composer["cost_uusd"] == 440_000
+def test_artificialanalysis_keeps_effort_per_row():
+    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
+    opus = {row["effort"]: row for row in rows if row["model_key"] == "opus-5.5"}
+    assert set(opus) == {"low", "medium", "high", "xhigh", "max"}
+    assert opus["max"]["score"] == 57.6
+    assert opus["max"]["cost_uusd"] == 5_982_012
+    assert opus["high"]["first_answer_seconds"] == 12.7
+    assert opus["high"]["tokens_per_second"] == 84.6
+    assert opus["max"]["tokens_per_second"] is None  # not timed yet: absent, never zero
 
 
-def test_cursorbench_keeps_effort_per_row():
-    rows, _ = cursorbench.parse(fixture("cursorbench.html"))
-    opus = {row["effort"]: row["score"] for row in rows if row["model_key"] == "opus-5"}
-    assert opus == {"max": 70.0, "xhigh": 69.3, "high": 66.7, "medium": 64.3, "low": 62.8}
+def test_artificialanalysis_money_is_integer_micro_dollars():
+    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
+    priced = [row for row in rows if row["cost_uusd"] is not None]
+    assert priced and all(isinstance(row["cost_uusd"], int) for row in priced)
 
 
-def test_cursorbench_refuses_a_half_read_page():
+def test_artificialanalysis_keeps_an_unpriced_release_unpriced():
+    """GPT-6 was timed and scored on release day, but not priced — never invent the price."""
+    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
+    luna = [row for row in rows if row["model_key"] == "gpt-6-luna"]
+    assert luna and all(row["cost_uusd"] is None for row in luna)
+    assert all(row["score"] is not None for row in luna)
+
+
+def test_artificialanalysis_gives_non_reasoning_modes_no_effort():
+    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
+    sonnet = next(row for row in rows if row["source_slug"] == "claude-sonnet-5-non-reasoning")
+    assert sonnet["effort"] == "default"
+
+
+def test_artificialanalysis_refuses_a_half_read_page():
+    """A payload that lost most of its records must fail, not return a plausible subset."""
+    raw = fixture(AA_PAGE)
+    cut = raw[: len(raw) // 5] + "</body></html>"
     with pytest.raises(ValueError):
-        cursorbench.parse("<html><body><div>1Opus 5 Max70.0%$8.2361,83878</div></body></html>")
+        artificialanalysis.parse(cut)
+    with pytest.raises(ValueError):
+        artificialanalysis.parse("<html><body>Intelligence Index v4.3</body></html>")
 
 
 def test_copilot_prices_are_integer_micro_dollars():
     rows, _ = copilot.parse(fixture("copilot-models-and-pricing.html"))
-    opus = next(r for r in rows if r["model_key"] == "opus-5")
-    assert opus["input_uusd"] == 5_000_000
-    assert opus["output_uusd"] == 25_000_000
+    opus = next(r for r in rows if r["model_key"] == "opus-5.5")
+    assert opus["input_uusd"] == 4_000_000
+    assert opus["output_uusd"] == 20_000_000
     assert opus["category"] == "Powerful"
     assert all(isinstance(r["input_uusd"], int) for r in rows if r["input_uusd"] is not None)
 

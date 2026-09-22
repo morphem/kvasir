@@ -1,7 +1,8 @@
 """Canonical model keys and effort levels.
 
-The three sources spell the same model three ways: CursorBench says "Opus 5 Extra High",
-AI Stupid Level says "claude-opus-5", GitHub's docs say "Claude Opus 5". Everything is
+The three sources spell the same model three ways: Artificial Analysis says "Claude Opus 5
+(Adaptive Reasoning, Max Effort)", AI Stupid Level says "claude-opus-5", GitHub's docs say
+"Claude Opus 5". Everything is
 folded into one key ("opus-5") plus a separate effort level, because the join between the
 sources is the whole point of this page.
 
@@ -94,6 +95,9 @@ def model_key(name: str) -> str:
     key = re.sub(r"-\d{6,8}$", "", key)
     # "opus-4-8" and "opus-4.8" are the same model spelled by different sources.
     key = re.sub(r"(?<=\d)-(?=\d)", ".", key)
+    # Older releases put the version first ("Claude 4.5 Haiku"); everyone else, including
+    # the vendor's own later names, puts the family first.
+    key = re.sub(r"^(\d+(?:\.\d+)*)-([a-z]+)", r"\2-\1", key)
     return ALIASES.get(key, key)
 
 

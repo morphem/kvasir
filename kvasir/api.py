@@ -25,7 +25,7 @@ from .collect import (
     capture_recommendation,
     collect_all,
 )
-from .collectors import MODULES, SOURCE_LABELS
+from .collectors import MODULES, RETIRED_SOURCES, SOURCE_LABELS
 from .config import settings
 from .naming import display_name
 
@@ -161,19 +161,17 @@ def health():
 
 @app.get("/api/view")
 def view(all: bool = Query(False, description="include models hidden by configuration")):
-    cb_rows, cb_meta = db.latest(settings.db_path, "cursorbench")
+    aa_rows, aa_meta = db.latest(settings.db_path, "artificialanalysis")
     ai_rows, _ = db.latest(settings.db_path, "stupidlevel")
     cp_rows, cp_meta = db.latest(settings.db_path, "copilot")
-    speed_rows, _ = db.latest(settings.db_path, "speed")
     payload = recommend.build(
-        cb_rows,
+        aa_rows,
         ai_rows,
         cp_rows,
         settings,
         settings.disabled_models,
         credit_usd=cp_meta.get("credit_usd"),
         show_all=all,
-        speed_rows=speed_rows,
     )
     payload["credit_usd_quote"] = cp_meta.get("credit_usd_quote")
     payload["disabled_by_config"] = settings.disabled_models
@@ -182,8 +180,8 @@ def view(all: bool = Query(False, description="include models hidden by configur
         {
             "version": __version__,
             "generated_at": db.now_iso(),
-            "benchmark_version": cb_meta.get("benchmark_version"),
-            "benchmark_history": db.benchmark_versions(settings.db_path, "cursorbench"),
+            "benchmark_version": aa_meta.get("benchmark_version"),
+            "benchmark_history": db.benchmark_versions(settings.db_path, "artificialanalysis"),
             "sources": _sources_block(),
             "drift": _drift_block(ai_rows),
             "archive": db.archive_stats(settings.db_path),
@@ -191,7 +189,7 @@ def view(all: bool = Query(False, description="include models hidden by configur
                 **(db.source_status(settings.db_path).get(BACKFILL_SOURCE) or {}),
                 "interval_minutes": scheduler.interval_minutes(BACKFILL_SOURCE),
             },
-            "ready": bool(cb_rows and ai_rows and cp_rows),
+            "ready": bool(aa_rows and ai_rows and cp_rows),
         }
     )
     return payload
@@ -221,7 +219,7 @@ def history(
     effort: str | None = None,
     days: int = Query(90, ge=1, le=3650),
 ):
-    if source not in MODULES:
+    if source not in MODULES and source not in RETIRED_SOURCES:
         raise HTTPException(404, "unknown source")
     return {
         "source": source,

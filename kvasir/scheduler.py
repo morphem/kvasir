@@ -32,9 +32,8 @@ TICK_SECONDS = 60
 def interval_minutes(source: str) -> int:
     return {
         "stupidlevel": settings.interval_stupidlevel,
-        "cursorbench": settings.interval_cursorbench,
+        "artificialanalysis": settings.interval_aa,
         "copilot": settings.interval_copilot,
-        "speed": settings.interval_speed,
         BACKFILL_SOURCE: settings.interval_backfill,
     }.get(source, 720)
 

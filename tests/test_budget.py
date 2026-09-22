@@ -1,35 +1,35 @@
 """The credit layer: a month of work, priced in AI credits, against a tier.
 
 These tests pin the arithmetic and the discipline, not the specific models — the models are
-whatever the live data says this week.
+whatever the live data says this week. Every rule is checked at every patience setting.
 """
 
 from datetime import datetime, timezone
 
 from conftest import fixture
+from test_recommend import aa_row, sold
 
 from kvasir import budget, recommend
-from kvasir.collectors import copilot, cursorbench, speed, stupidlevel
+from kvasir.collectors import artificialanalysis, copilot, stupidlevel
 from kvasir.config import Settings
 
 
 def view(tiers=None):
-    cb, _ = cursorbench.parse(fixture("cursorbench.html"))
+    aa, _ = artificialanalysis.parse(fixture("artificialanalysis-model-page.html"))
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, cp_meta = copilot.parse(fixture("copilot-models-and-pricing.html"))
-    sp, _ = speed.parse(fixture("artificialanalysis-models.html"))
     settings = Settings()
     if tiers:
         settings = Settings(tiers=tiers)
     return recommend.build(
-        cb,
-        ai,
-        cp,
-        settings,
-        settings.disabled_models,
-        credit_usd=cp_meta.get("credit_usd"),
-        speed_rows=sp,
+        aa, ai, cp, settings, settings.disabled_models, credit_usd=cp_meta.get("credit_usd")
     )
+
+
+def every_plan(payload):
+    """Each tier at each patience setting — nine plans on the default tiers."""
+    for by_patience in payload["plans"].values():
+        yield from by_patience.values()
 
 
 def test_credit_rate_comes_from_the_docs_not_from_a_constant():
@@ -52,7 +52,7 @@ def test_credits_are_dollars_times_one_hundred():
 def test_every_tier_gets_a_full_plan_that_states_its_arithmetic():
     payload = view()
     for tier in payload["budget_tiers"]:
-        plan = payload["plans"][tier["id"]]
+        plan = payload["plans"][tier["id"]][budget.DEFAULT_PATIENCE]
         assert plan["usd"] == round(tier["credits"] * 0.01, 2)
         assert set(plan["roles"]) == {"architect", "worker", "scout"}
         rebuilt = sum(role["month_credits"] for role in plan["roles"].values() if role["pick"])
@@ -63,23 +63,22 @@ def test_every_tier_gets_a_full_plan_that_states_its_arithmetic():
 
 def test_a_tight_tier_buys_cheaper_models_than_a_generous_one():
     payload = view()
-    basic = payload["plans"]["basic"]
-    power = payload["plans"]["power"]
+    basic = payload["plans"]["basic"][budget.DEFAULT_PATIENCE]
+    power = payload["plans"]["power"][budget.DEFAULT_PATIENCE]
     assert basic["roles"]["architect"]["per_task_credits"] < power["roles"]["architect"]["per_task_credits"]
     assert power["roles"]["architect"]["out_of_reach"] is None  # nothing is out of reach here
     assert basic["month_credits"] < power["month_credits"]
 
 
 def test_the_plan_fits_the_month_it_was_built_for():
-    payload = view()
-    for plan in payload["plans"].values():
+    for plan in every_plan(view()):
         assert plan["month_credits"] <= plan["credits"], f"{plan['name']} overspends its own tier"
         assert plan["headroom_credits"] >= 0
 
 
 def test_a_tier_too_small_for_anything_says_so():
     payload = view(tiers=[{"id": "sliver", "name": "Sliver", "credits": 10}])
-    roles = payload["plans"]["sliver"]["roles"]
+    roles = payload["plans"]["sliver"][budget.DEFAULT_PATIENCE]["roles"]
     assert all(role["pick"] is None for role in roles.values())
     assert all("Nothing on the board" in role["why"] for role in roles.values())
 
@@ -87,18 +86,20 @@ def test_a_tier_too_small_for_anything_says_so():
 def test_the_mechanical_role_never_outranks_the_planning_one():
     """However much budget there is, the stack keeps its shape."""
     payload = view(tiers=[{"id": "silly", "name": "Silly", "credits": 5_000_000}])
-    plan = payload["plans"]["silly"]
-    roles = plan["roles"]
-    assert roles["scout"]["pick"]["score"] <= roles["worker"]["pick"]["score"]
-    assert roles["worker"]["pick"]["score"] <= roles["architect"]["pick"]["score"]
-    assert roles["scout"]["pick"]["cost_uusd"] <= roles["architect"]["pick"]["cost_uusd"]
-    # A budget the board cannot absorb is not spent for the sake of spending it.
-    assert plan["used_pct"] < 100 * budget.MAX_UTILISATION
+    for plan in payload["plans"]["silly"].values():
+        roles = plan["roles"]
+        assert roles["scout"]["pick"]["score"] <= roles["worker"]["pick"]["score"]
+        assert roles["worker"]["pick"]["score"] <= roles["architect"]["pick"]["score"]
+        # ...and on price: a scout dearer than the worker is a worse worker, not a scout.
+        assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
+        assert roles["worker"]["pick"]["cost_uusd"] <= roles["architect"]["pick"]["cost_uusd"]
+        # A budget the board cannot absorb is not spent for the sake of spending it.
+        assert plan["used_pct"] < 100 * budget.MAX_UTILISATION
 
 
 def test_a_tier_is_used_or_says_what_stopped_it():
     """Unused credits buy nothing. Stopping short is allowed; stopping silently is not."""
-    for plan in view()["plans"].values():
+    for plan in every_plan(view()):
         if plan["used_pct"] >= 100 * budget.TARGET_UTILISATION:
             assert plan["stopped_because"] is None
             continue
@@ -108,34 +109,34 @@ def test_a_tier_is_used_or_says_what_stopped_it():
 
 def test_the_surplus_walk_runs_or_says_why_it_did_not():
     """Either the tier gets used, or the plan names what stopped it. Never neither."""
-    for plan in view()["plans"].values():
+    for plan in every_plan(view()):
         moved = any(role.get("upgraded_from") for role in plan["roles"].values())
         assert moved or plan["stopped_because"], f"{plan['name']} neither spent nor explained"
 
 
-def test_a_slow_model_cannot_take_a_role_you_wait_on():
+def test_a_role_you_wait_on_never_outwaits_its_patience():
     """The architect may be slow — you wait once, deliberately. The loop roles may not."""
-    for plan in view()["plans"].values():
+    for plan in every_plan(view()):
+        ceilings = budget.PATIENCE[plan["patience"]]
         for name in ("worker", "scout"):
             pick = plan["roles"][name]["pick"]
-            if not pick:
-                continue
-            speed = (pick.get("speed") or {}).get("tokens_per_second")
-            if speed is not None:
-                assert speed >= budget.SPEED_FLOOR_TPS, f"{name} runs at {speed} tokens/s"
+            wait = budget.wait_of(pick) if pick else None
+            if wait is not None and ceilings[name] is not None:
+                assert wait <= ceilings[name], f"{name} makes you wait {wait}s at {plan['patience']}"
 
 
 def test_an_unmeasured_model_is_not_treated_as_slow():
     """Absence of a measurement decides nothing — the same rule the drift veto learned."""
     unmeasured = {"key": "mystery", "effort": "max", "score": 60.0, "cost_uusd": 1_000_000}
-    assert budget.fast_enough(unmeasured)
-    assert budget.fast_enough({**unmeasured, "speed": {"tokens_per_second": 500}})
-    assert not budget.fast_enough({**unmeasured, "speed": {"tokens_per_second": 5}})
+    assert budget.quick_enough(unmeasured, 10)
+    assert budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 4}}, 10)
+    assert not budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 40}}, 10)
+    assert budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 400}}, None)
 
 
 def test_no_plan_ever_passes_the_safety_cap():
     """The month is a model, not a meter — leave room for a heavier one."""
-    for plan in view()["plans"].values():
+    for plan in every_plan(view()):
         assert plan["month_credits"] <= plan["credits"] * budget.MAX_UTILISATION + 1
 
 
@@ -146,36 +147,23 @@ def test_surplus_reaches_planning_before_the_mechanical_role():
     budget for exactly one step, so which role takes it is the rule under test and nothing
     else.
     """
-    ladder = []
     # Sized so the opening shares cannot reach the top rung but the tier's surplus can —
     # otherwise every role starts at the top and there is nothing to order.
-    for index, (score, cost) in enumerate([(50.0, 1_000_000), (55.0, 3_000_000), (60.0, 30_000_000)]):
-        ladder.append(
-            {"model_key": f"rung{index}", "effort": "max", "rank": index + 1, "score": score,
-             "cost_uusd": cost, "tokens_per_second": 500, "tokens": 1000, "steps": 10}
-        )
-    cb = [{k: v for k, v in rung.items() if k != "tokens_per_second"} for rung in ladder]
-    cp = [
-        {"model_key": rung["model_key"], "effort": "default", "tier": "Default",
-         "input_uusd": 1, "output_uusd": 1, "category": "Powerful"}
-        for rung in ladder
-    ]
-    fast = [
-        {"model_key": rung["model_key"], "effort": "max", "source_name": rung["model_key"],
-         "tokens_per_second": 500.0}
-        for rung in ladder
+    rows = [
+        aa_row(f"rung{index}", "max", score, cost, wait=1)
+        for index, (score, cost) in enumerate([(50.0, 1_000_000), (55.0, 3_000_000), (60.0, 30_000_000)])
     ]
     settings = Settings(tiers=[{"id": "one_step", "name": "One step", "credits": 100_000}])
     plan = recommend.build(
-        cb, [], cp, settings, [], credit_usd=0.01, speed_rows=fast
-    )["plans"]["one_step"]
+        rows, [], sold(*(row["model_key"] for row in rows)), settings, [], credit_usd=0.01
+    )["plans"]["one_step"][budget.DEFAULT_PATIENCE]
     roles = plan["roles"]
     assert roles["architect"]["upgraded_from"], "the surplus skipped planning"
     assert not roles["scout"]["upgraded_from"], "the mechanical role was served first"
 
 
 def test_spending_the_surplus_keeps_three_distinct_roles():
-    for plan in view()["plans"].values():
+    for plan in every_plan(view()):
         picks = [
             (role["pick"]["key"], role["pick"]["effort"])
             for role in plan["roles"].values()
@@ -195,11 +183,9 @@ def test_assumptions_are_published_with_the_answer():
 
 def test_the_drift_veto_applies_inside_a_tier_plan_too():
     """Affordability decides what is possible; drift still decides what is sane."""
-    cb = [
-        {"model_key": "falling", "effort": "high", "rank": 1, "score": 60.0,
-         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
-        {"model_key": "steady", "effort": "high", "rank": 2, "score": 59.0,
-         "cost_uusd": 1_000_000, "tokens": 1000, "steps": 10},
+    rows = [
+        aa_row("falling", "high", 60.0, 1_000_000),
+        aa_row("steady", "high", 59.0, 1_000_000),
     ]
     now = datetime.now(timezone.utc).isoformat()
     ai = [
@@ -209,8 +195,8 @@ def test_the_drift_veto_applies_inside_a_tier_plan_too():
          "is_stale": False, "last_updated": now},
     ]
     settings = Settings(tiers=[{"id": "roomy", "name": "Roomy", "credits": 1_000_000}])
-    payload = recommend.build(cb, ai, [], settings, [], credit_usd=0.01)
-    architect = payload["plans"]["roomy"]["roles"]["architect"]
+    payload = recommend.build(rows, ai, [], settings, [], credit_usd=0.01)
+    architect = payload["plans"]["roomy"][budget.DEFAULT_PATIENCE]["roles"]["architect"]
     assert architect["pick"]["key"] == "steady"
     assert architect["drift_replaced"] == "Falling · High"
     assert "sliding" in architect["why"]
@@ -218,8 +204,8 @@ def test_the_drift_veto_applies_inside_a_tier_plan_too():
 
 def test_a_richer_tier_is_never_told_it_fell_short():
     """The card once said "this tier does not reach it" about a model it had outspent."""
-    payload = view()
-    for name, plan in payload["plans"].items():
+    for plan in every_plan(view()):
+        name = plan["name"]
         for role, slot in plan["roles"].items():
             reach = slot.get("out_of_reach")
             if not reach:

@@ -5,10 +5,14 @@ echoed into the API response so the page can show its own reasoning instead of a
 be trusted. Nothing is hand-tuned per model: change the benchmark numbers and the verdict
 changes with them, which is the whole point of archiving them.
 
-Cost is CursorBench's average cost per task, the only end-to-end price any source
-publishes. Quality is the CursorBench score. Drift is AI Stupid Level's current score and
-trend, used as a veto rather than as another number to average in — a model that is
-quietly getting worse this week should not win on last month's benchmark.
+Quality, cost and time come from Artificial Analysis: the Intelligence Index score, the cost of
+one index task, and the wait before the first answer token — all per effort, all from the same
+runs. Drift is AI Stupid Level's current score and trend, used as a veto rather than as another
+number to average in — a model that is quietly getting worse this week should not win on last
+month's benchmark. GitHub's Copilot page decides what is on the board at all.
+
+The roles themselves are filled in `budget.py`, once per tier and patience setting; this module
+builds the board they are filled from, and the views of it the page draws.
 """
 
 from __future__ import annotations
@@ -17,60 +21,45 @@ from datetime import datetime, timezone
 
 from . import budget, db
 from .catalog import TASKS, TIER_BY_ID, TIERS
-from .naming import EFFORT_LABELS, label as model_label, vendor_of
-
-SWAP_MAX_COST_FACTOR = 1.3
-
-# Value-ladder verdicts, in micro-dollars per percentage point of CursorBench score.
-BARGAIN_UUSD_PER_PP = 150_000      # under $0.15 per point — take the better model
-STEEP_UUSD_PER_PP = 750_000        # over $0.75 per point — you are buying very little
+from .naming import EFFORT_LABELS, vendor_of
+from .naming import label as model_label
 
 
 def _usd(uusd: int | None) -> float | None:
     return None if uusd is None else round(uusd / 1_000_000, 4)
 
 
-def _speed_block(model_row: dict | None, variant_row: dict | None) -> dict | None:
-    """What we know about this exact variant's clock, and at what setting we know it."""
-    if not model_row and not variant_row:
-        return None
-    block: dict = {}
-    if model_row:
-        block["tokens_per_second"] = model_row["tokens_per_second"]
-        block["measured_effort"] = model_row["effort"]
-    if variant_row:
-        block["first_answer_seconds"] = variant_row.get("first_answer_seconds")
-        block["end_to_end_seconds"] = variant_row.get("end_to_end_seconds")
-        block["thinking_seconds"] = variant_row.get("thinking_seconds")
-    return block or None
+def _speed_block(row: dict, family: dict | None) -> dict | None:
+    """What we know about this exact variant's clock, and at what setting we know it.
+
+    Waiting time is the variant's own or nothing: reasoning effort *is* the waiting, so
+    lending one effort's clock to another would be a fiction. Typing speed is a property of
+    the model and its hardware, so a variant that was not timed borrows its family's, and
+    says which effort that came from.
+    """
+    own_speed = row.get("tokens_per_second")
+    source = row if own_speed else family
+    block = {
+        "tokens_per_second": source.get("tokens_per_second") if source else None,
+        "measured_effort": source.get("effort") if source else None,
+        "first_answer_seconds": row.get("first_answer_seconds"),
+        "end_to_end_seconds": row.get("end_to_end_seconds"),
+        "thinking_seconds": row.get("thinking_seconds"),
+    }
+    return block if any(v for k, v in block.items() if k != "measured_effort") else None
 
 
 def merge(
-    cb_rows: list[dict],
-    ai_rows: list[dict],
-    cp_rows: list[dict],
-    speed_rows: list[dict] | None = None,
+    aa_rows: list[dict], ai_rows: list[dict], cp_rows: list[dict]
 ) -> tuple[list[dict], list[dict]]:
     """Join the three sources on the canonical model key.
 
-    Returns (candidates, copilot_only) — the second list is models we can pick at work but
-    that nobody has benchmarked end to end, which is a fact worth showing rather than
-    hiding.
+    Returns (candidates, copilot_only). A candidate is one model at one named effort with an
+    index score; a variant without an effort (a non-reasoning mode) is archived but never a
+    candidate, because no number is shown without its effort. The second list is what we can
+    pick at work but nobody has scored, which is a fact worth showing rather than hiding.
     """
     drift_by_model = {row["model_key"]: row for row in ai_rows}
-
-    # Two different joins, because the two measurements behave differently. Output speed is
-    # a property of the model and its hardware — reasoning effort changes how long a model
-    # thinks, not how fast it decodes — so it carries across efforts, labelled with the one
-    # it was measured at. Latency does not: Opus 5 waits 49.7 seconds before answering at
-    # max and 3.8 at medium, so lending one effort's clock to another would be a fiction.
-    speed_by_model: dict[str, dict] = {}
-    latency_by_variant: dict[tuple[str, str], dict] = {}
-    for row in speed_rows or []:
-        if row.get("tokens_per_second") and row["model_key"] not in speed_by_model:
-            speed_by_model[row["model_key"]] = row
-        if row.get("first_answer_seconds") or row.get("end_to_end_seconds"):
-            latency_by_variant[(row["model_key"], row["effort"])] = row
     copilot_by_model: dict[str, dict] = {}
     for row in cp_rows:
         tier = (row.get("tier") or "Default").lower()
@@ -78,8 +67,15 @@ def merge(
             continue  # long-context pricing is a variant, not a different model
         copilot_by_model.setdefault(row["model_key"], row)
 
+    family_speed: dict[str, dict] = {}
+    for row in aa_rows:
+        if row.get("tokens_per_second") and row["effort"] != "default":
+            family_speed.setdefault(row["model_key"], row)
+
     candidates = []
-    for row in cb_rows:
+    for row in aa_rows:
+        if row["effort"] == "default" or row.get("score") is None:
+            continue
         key = row["model_key"]
         drift = drift_by_model.get(key)
         copilot = copilot_by_model.get(key)
@@ -90,12 +86,16 @@ def merge(
                 "effort_label": EFFORT_LABELS.get(row["effort"], row["effort"]),
                 "label": model_label(key, row["effort"]),
                 "vendor": vendor_of(key),
-                "rank": row["rank"],
                 "score": row["score"],
-                "cost_uusd": row["cost_uusd"],
-                "cost_usd": _usd(row["cost_uusd"]),
-                "tokens": row["tokens"],
-                "steps": row["steps"],
+                "terminal_bench": row.get("terminal_bench"),
+                "cost_uusd": row.get("cost_uusd"),
+                "cost_usd": _usd(row.get("cost_uusd")),
+                # Artificial Analysis times a new release before it prices it. Such a variant
+                # is on the board, never in a role: a budget cannot be planned on no price.
+                "priced": row.get("cost_uusd") is not None,
+                "output_tokens": row.get("output_tokens"),
+                "deprecated": row.get("deprecated", False),
+                "released": row.get("released", ""),
                 "drift": None
                 if not drift
                 else {
@@ -106,9 +106,7 @@ def merge(
                     "ci_low": drift.get("ci_low"),
                     "ci_high": drift.get("ci_high"),
                 },
-                "speed": _speed_block(
-                    speed_by_model.get(key), latency_by_variant.get((key, row["effort"]))
-                ),
+                "speed": _speed_block(row, family_speed.get(key)),
                 "copilot": None
                 if not copilot
                 else {
@@ -122,10 +120,10 @@ def merge(
             }
         )
 
-    benchmarked = {row["model_key"] for row in cb_rows}
+    scored = {c["key"] for c in candidates}
     copilot_only = []
     for key, row in sorted(copilot_by_model.items()):
-        if key in benchmarked:
+        if key in scored:
             continue
         copilot_only.append(
             {
@@ -204,123 +202,15 @@ def availability(candidate: dict, disabled: list[str]) -> str:
     return AVAILABLE
 
 
-def _swap_for_drift(pick: dict, pool: list[dict], trusted: bool = True) -> tuple[dict, dict | None]:
-    """If the winner is drifting, take the nearest non-drifting model instead."""
-    if not trusted or not budget.drifting(pick):
-        return pick, None
-    for other in sorted(pool, key=lambda c: -c["score"]):
-        if other is pick or not budget.steady(other):
-            continue
-        if other["score"] < pick["score"] - budget.DRIFT_MAX_SCORE_LOSS_PP:
-            continue
-        if pick["cost_uusd"] and other["cost_uusd"] > pick["cost_uusd"] * SWAP_MAX_COST_FACTOR:
-            continue
-        return other, pick
-    return pick, None
-
-
-def pick_tiers(candidates: list[dict], cfg, drift_trusted: bool = True) -> dict:
-    """Fill the three roles from the current data. Thresholds come from config."""
-    if not candidates:
-        return {}
-
-    top_score = max(c["score"] for c in candidates)
-    worker_cap = int(cfg.worker_max_cost_usd * 1_000_000)
-    scout_cap = int(cfg.scout_max_cost_usd * 1_000_000)
-
-    pools = {
-        "architect": [c for c in candidates if c["score"] >= top_score - cfg.architect_score_slack_pp],
-        "worker": [c for c in candidates if c["cost_uusd"] <= worker_cap],
-        "scout": [c for c in candidates if c["cost_uusd"] <= scout_cap],
-    }
-    # A pool can come up empty once models are hidden; fall back to the cheapest available
-    # rather than showing a hole, and say so.
-    relaxed = set()
-    for tier_id, pool in pools.items():
-        if not pool:
-            pools[tier_id] = sorted(candidates, key=lambda c: c["cost_uusd"])[:5]
-            relaxed.add(tier_id)
-
-    chooser = {
-        "architect": lambda pool: min(pool, key=lambda c: (c["cost_uusd"], -c["score"])),
-        "worker": lambda pool: max(pool, key=lambda c: (c["score"], -c["steps"])),
-        "scout": lambda pool: max(pool, key=lambda c: (c["score"], -c["cost_uusd"])),
-    }
-
-    verdicts = {}
-    for tier_id, pool in pools.items():
-        raw_pick = chooser[tier_id](pool)
-        pick, replaced = _swap_for_drift(raw_pick, pool, drift_trusted)
-        runner_up = next(
-            (c for c in sorted(pool, key=lambda c: -c["score"]) if c["key"] != pick["key"]), None
-        )
-        verdicts[tier_id] = {
-            "tier": TIER_BY_ID[tier_id],
-            "pick": pick,
-            "runner_up": runner_up,
-            "replaced": replaced,
-            "relaxed": tier_id in relaxed,
-            "pool_size": len(pool),
-            "why": _why(tier_id, pick, replaced, top_score, cfg),
-        }
-
-    # Overlapping ranges: when two roles land on the same model, say it once instead of
-    # inventing a difference that the data does not support.
-    for a, b in (("architect", "worker"), ("worker", "scout")):
-        if verdicts.get(a) and verdicts.get(b) and verdicts[a]["pick"]["key"] == verdicts[b]["pick"]["key"]:
-            same_effort = verdicts[a]["pick"]["effort"] == verdicts[b]["pick"]["effort"]
-            verdicts[b]["overlap_with"] = a
-            verdicts[b]["overlap_note"] = (
-                f"Same model as the {TIER_BY_ID[a]['name'].lower()}"
-                + (" at the same effort — the ranges overlap, there is nothing to split."
-                   if same_effort else " — only the effort differs.")
-            )
-    return verdicts
-
-
-def _why(tier_id: str, pick: dict, replaced: dict | None, top_score: float, cfg) -> str:
-    cost = pick["cost_usd"]
-    if tier_id == "architect":
-        base = (
-            f"Cheapest way into the top group: {pick['score']:.1f}% at ${cost:.2f} per task "
-            f"(best today is {top_score:.1f}%, cutoff {cfg.architect_score_slack_pp:.0f} pp)."
-        )
-    elif tier_id == "worker":
-        base = (
-            f"Highest score that fits under ${cfg.worker_max_cost_usd:.2f} per task: "
-            f"{pick['score']:.1f}% for ${cost:.2f}, {pick['steps']} steps."
-        )
-    else:
-        base = (
-            f"Highest score under ${cfg.scout_max_cost_usd:.2f} per task: "
-            f"{pick['score']:.1f}% for ${cost:.2f}."
-        )
-    if replaced:
-        base += (
-            f" Instead of {replaced['label']} — that one is drifting down on AI Stupid Level, "
-            "so today it is not worth the risk."
-        )
-    return base
-
-
-def frontier(candidates: list[dict]) -> list[dict]:
-    """The cost/quality frontier: models nothing else beats on price and score at once."""
-    ordered = sorted(candidates, key=lambda c: (c["cost_uusd"], -c["score"]))
-    out: list[dict] = []
-    best = float("-inf")
-    for candidate in ordered:
-        if candidate["score"] > best:
-            out.append(candidate)
-            best = candidate["score"]
-    return out
+frontier = budget.frontier
 
 
 def value_ladder(candidates: list[dict]) -> list[dict]:
     """The cost/quality frontier, rung by rung.
 
-    Each step answers one question: how much does the next percentage point cost here.
-    That is where "pay pennies more, get a much better result" becomes visible — and where
-    paying five times more for half a point becomes visible too.
+    Each step answers one question: how much does the next point of Intelligence Index cost
+    here. That is where "pay pennies more, get a much better result" becomes visible — and
+    where paying five times more for half a point becomes visible too.
     """
     rungs = []
     steps = frontier(candidates)
@@ -331,8 +221,7 @@ def value_ladder(candidates: list[dict]) -> list[dict]:
             "effort": candidate["effort"],
             "score": candidate["score"],
             "cost_usd": candidate["cost_usd"],
-            "steps": candidate["steps"],
-            "tokens": candidate["tokens"],
+            "output_tokens": candidate["output_tokens"],
             "drift": candidate["drift"],
             "copilot": bool(candidate["copilot"]),
         }
@@ -355,22 +244,24 @@ def value_ladder(candidates: list[dict]) -> list[dict]:
 
 
 def _ladder_verdict(per_pp: float | None) -> str:
+    """The same two thresholds the loop roles climb by — one discipline, not two."""
     if per_pp is None:
         return "flat"
-    if per_pp <= BARGAIN_UUSD_PER_PP:
+    usd_per_pp = per_pp / 1_000_000
+    if usd_per_pp <= budget.BARGAIN_USD_PER_PP:
         return "bargain"
-    if per_pp <= STEEP_UUSD_PER_PP:
+    if usd_per_pp <= budget.FAIR_USD_PER_PP:
         return "fair"
     return "steep"
 
 
-def gaps(verdicts: dict) -> list[dict]:
+def gaps(roles: dict) -> list[dict]:
     """The distance between the roles — the thing that decides whether to escalate."""
     out = []
     for lower, upper in (("scout", "worker"), ("worker", "architect")):
-        if lower not in verdicts or upper not in verdicts:
+        if lower not in roles or upper not in roles:
             continue
-        low, high = verdicts[lower]["pick"], verdicts[upper]["pick"]
+        low, high = roles[lower]["pick"], roles[upper]["pick"]
         d_score = round(high["score"] - low["score"], 1)
         d_cost = high["cost_uusd"] - low["cost_uusd"]
         per_pp = d_cost / d_score if d_score > 0 else None
@@ -390,37 +281,12 @@ def gaps(verdicts: dict) -> list[dict]:
     return out
 
 
-def resolve_tasks(verdicts: dict) -> list[dict]:
-    """The quick-answer table: a job on the left, the model to start on the right."""
-    rows = []
-    for task in TASKS:
-        verdict = verdicts.get(task["tier"])
-        if not verdict:
-            continue
-        pick = verdict["pick"]
-        rows.append(
-            {
-                **task,
-                "tier_name": TIER_BY_ID[task["tier"]]["name"],
-                "accent": TIER_BY_ID[task["tier"]]["accent"],
-                "pick_label": pick["label"],
-                "pick_key": pick["key"],
-                "pick_score": pick["score"],
-                "pick_cost_usd": pick["cost_usd"],
-                "pick_in_copilot": bool(pick["copilot"]),
-                "overlap_note": verdict.get("overlap_note"),
-            }
-        )
-    return rows
-
-
 def _decision(payload: dict) -> dict:
     """The part of a view that is a decision: who won which role, at what price.
 
     Freshness counters, timestamps and the "why" prose are deliberately left out — they
-    move on every render and would turn the change log into noise. Thresholds and the
-    credit rate are kept, because a config change that moves every pick must stay
-    explainable from the archived record alone.
+    move on every render and would turn the change log into noise. The credit rate is kept,
+    because a change that moves every pick must stay explainable from the archived record.
     """
 
     def core(pick: dict | None) -> dict | None:
@@ -435,17 +301,12 @@ def _decision(payload: dict) -> dict:
         }
 
     return {
-        "verdicts": {
-            tier_id: {
-                "pick": core(verdict.get("pick")),
-                "replaced": verdict["replaced"]["label"] if verdict.get("replaced") else None,
-                "relaxed": verdict.get("relaxed", False),
-            }
-            for tier_id, verdict in payload["verdicts"].items()
-        },
         "plans": {
-            tier_id: {role: core(data.get("pick")) for role, data in plan["roles"].items()}
-            for tier_id, plan in payload["plans"].items()
+            tier_id: {
+                patience_id: {role: core(data.get("pick")) for role, data in plan["roles"].items()}
+                for patience_id, plan in by_patience.items()
+            }
+            for tier_id, by_patience in payload["plans"].items()
         },
         "credit_usd": payload["credit_usd"],
         "thresholds": payload["thresholds"],
@@ -459,36 +320,26 @@ def capture(db_path: str, cfg) -> bool:
     touching the network; dedup means an unchanged reading costs one hash. Returns
     whether a new decision was written.
     """
-    cb_rows, _ = db.latest(db_path, "cursorbench")
+    aa_rows, _ = db.latest(db_path, "artificialanalysis")
     ai_rows, _ = db.latest(db_path, "stupidlevel")
     cp_rows, cp_meta = db.latest(db_path, "copilot")
-    speed_rows, _ = db.latest(db_path, "speed")
-    if not (cb_rows and ai_rows and cp_rows):
+    if not (aa_rows and ai_rows and cp_rows):
         return False  # an incomplete board has no verdict worth writing down
-    view = build(
-        cb_rows,
-        ai_rows,
-        cp_rows,
-        cfg,
-        cfg.disabled_models,
-        credit_usd=cp_meta.get("credit_usd"),
-        speed_rows=speed_rows,
-    )
+    view = build(aa_rows, ai_rows, cp_rows, cfg, cfg.disabled_models, cp_meta.get("credit_usd"))
     _, changed = db.archive_recommendation(db_path, _decision(view))
     return changed
 
 
 def build(
-    cb_rows,
+    aa_rows,
     ai_rows,
     cp_rows,
     cfg,
     disabled: list[str],
     credit_usd: float | None = None,
     show_all: bool = False,
-    speed_rows: list[dict] | None = None,
 ) -> dict:
-    candidates, copilot_only = merge(cb_rows, ai_rows, cp_rows, speed_rows)
+    candidates, copilot_only = merge(aa_rows, ai_rows, cp_rows)
 
     # Availability is only knowable while we hold GitHub's model list. On a cold start, or
     # if that source ever fails before its first snapshot, an empty board would be a worse
@@ -502,35 +353,49 @@ def build(
 
     # The default board is what we can actually start today. Recommending a model nobody
     # here can run is worse than recommending nothing: it reads as advice and cannot be
-    # taken. `show_all` opens the board so the cost of the restriction stays visible.
-    visible = candidates if show_all else [c for c in candidates if c["available"]]
-    excluded = [] if show_all else [c for c in candidates if not c["available"]]
+    # taken. `show_all` opens the board so the cost of the restriction stays visible — the
+    # current models, that is: six hundred retired variants would bury the comparison.
+    if show_all:
+        visible = [c for c in candidates if c["available"] or c["copilot"] or not c["deprecated"]]
+        excluded = []
+    else:
+        visible = [c for c in candidates if c["available"]]
+        # What GitHub sells us and the organisation switched off: a choice worth showing.
+        excluded = [c for c in candidates if not c["available"] and c["copilot"]]
+    priced = [c for c in visible if c["priced"]]
     drift_newest, drift_age_hours = drift_freshness(ai_rows)
     drift_trusted = drift_age_hours is not None and drift_age_hours <= DRIFT_TRUST_HOURS
 
-    verdicts = pick_tiers(visible, cfg, drift_trusted)
     rate = credit_usd or budget.CREDIT_USD_FALLBACK
-    plans = budget.plans(
-        cfg.tiers, visible, frontier(visible), rate, verdicts, drift_trusted=drift_trusted
-    )
-    for plan in plans.values():
-        # The distance between roles is worth seeing per tier: on a tight budget two roles can
-        # land on one model, and then the gap is genuinely zero.
-        picks = {role: data for role, data in plan["roles"].items() if data.get("pick")}
-        plan["gaps"] = gaps(picks)
+    plans = budget.plans(cfg.tiers, priced, rate, drift_trusted=drift_trusted)
+    for by_patience in plans.values():
+        for plan in by_patience.values():
+            # The distance between roles is worth seeing per tier: on a tight budget two roles
+            # can land on one model, and then the gap is genuinely zero.
+            picks = {role: data for role, data in plan["roles"].items() if data.get("pick")}
+            plan["gaps"] = gaps(picks)
     return {
         "credit_usd": rate,
         "credit_usd_verified": credit_usd is not None,
         "budget_tiers": cfg.tiers,
         "default_tier": cfg.default_tier,
+        "patience": [{"id": pid, **p} for pid, p in budget.PATIENCE.items()],
+        "default_patience": cfg.default_patience
+        if cfg.default_patience in budget.PATIENCE
+        else budget.DEFAULT_PATIENCE,
         "plans": plans,
         "assumptions": budget.assumptions(rate),
         "tiers": TIERS,
-        "verdicts": verdicts,
-        "tasks": resolve_tasks(verdicts),
-        "ladder": value_ladder(visible),
-        "gaps": gaps(verdicts),
+        "tasks": [
+            {**task, "tier_name": TIER_BY_ID[task["tier"]]["name"], "accent": TIER_BY_ID[task["tier"]]["accent"]}
+            for task in TASKS
+        ],
+        "ladder": value_ladder(priced),
         "candidates": sorted(visible, key=lambda c: -c["score"]),
+        "unpriced": sorted(
+            ({"key": c["key"], "label": c["label"], "released": c["released"]} for c in visible if not c["priced"]),
+            key=lambda c: c["label"],
+        ),
         "excluded": sorted(excluded, key=lambda c: -c["score"]),
         "availability_known": availability_known,
         "drift_trusted": drift_trusted,
@@ -540,10 +405,7 @@ def build(
         "disabled_families": sorted({f.lower() for f in disabled}),
         "copilot_only": copilot_only,
         "thresholds": {
-            "worker_max_cost_usd": cfg.worker_max_cost_usd,
-            "scout_max_cost_usd": cfg.scout_max_cost_usd,
-            "architect_score_slack_pp": cfg.architect_score_slack_pp,
-            "bargain_usd_per_pp": BARGAIN_UUSD_PER_PP / 1_000_000,
-            "steep_usd_per_pp": STEEP_UUSD_PER_PP / 1_000_000,
+            "bargain_usd_per_pp": budget.BARGAIN_USD_PER_PP,
+            "fair_usd_per_pp": budget.FAIR_USD_PER_PP,
         },
     }

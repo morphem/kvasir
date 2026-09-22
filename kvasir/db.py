@@ -319,11 +319,12 @@ def drift_summary(db_path: str, days: int = 7) -> dict[str, dict]:
     return out
 
 
-def benchmark_versions(db_path: str, source: str = "cursorbench") -> list[dict]:
+def benchmark_versions(db_path: str, source: str = "artificialanalysis") -> list[dict]:
     """Which benchmark version produced which stretch of the archive.
 
     A benchmark that re-baselines is not the same measurement afterwards: CursorBench 4.0
-    put the top score 19 points below 3.2's and re-ran a third of the models. Without this
+    put the top score 19 points below 3.2's and re-ran a third of the models, and the
+    Artificial Analysis Intelligence Index is versioned the same way (v4.3 in September 2026). Without this
     timeline the archive silently mixes two scales, and the page cannot explain why the
     board shrank overnight.
     """
