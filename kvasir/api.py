@@ -56,21 +56,13 @@ async def lifespan(app: FastAPI):
         "present" if settings.stupidlevel_api_key else "absent — drift scores will freeze",
     )
 
-    async def bootstrap():
-        # Anything the archive is missing is fetched immediately; the scheduler then keeps
-        # it fresh. A cold container is useful within seconds, not at the next interval.
-        missing = [s for s in MODULES if not db.latest(settings.db_path, s)[0]]
-        if missing:
-            await collect_all(missing)
-        # The verdict log must not wait for a poll either: after a restart the page already
-        # has an answer, so it goes to the archive now. Dedup makes a no-op free.
+    # The verdict log must not wait for a poll: after a restart the page already has an
+    # answer, so it goes to the archive now. Dedup makes a no-op free. Collection itself is the
+    # scheduler's first tick, which runs at once — a cold container is useful within seconds,
+    # and nothing is polled twice. (A separate boot catch-up used to race that tick.)
+    if settings.autostart:
         capture_recommendation()
-
-    app.state.tasks = (
-        [asyncio.create_task(bootstrap()), asyncio.create_task(scheduler.run_forever())]
-        if settings.autostart
-        else []
-    )
+    app.state.tasks = [asyncio.create_task(scheduler.run_forever())] if settings.autostart else []
     try:
         yield
     finally:

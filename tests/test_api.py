@@ -166,3 +166,38 @@ def test_the_api_key_survives_a_container_rebuild():
         assert Settings().stupidlevel_api_key == "asl_live_env"
     finally:
         del os.environ["KVASIR_STUPIDLEVEL_API_KEY"]
+
+
+def test_two_ticks_at_once_poll_each_source_once(monkeypatch):
+    """Boot used to poll every source twice: a tick that waited for another collection then
+    collected the list it had decided on before waiting. "Due" is decided under the lock now."""
+    import asyncio
+    import tempfile
+
+    from kvasir import scheduler
+    from kvasir.collectors import MODULES
+    from kvasir.config import Settings
+
+    local = Settings(data_dir=tempfile.mkdtemp(prefix="kvasir-tick-"))
+    db.init(local.db_path)
+    monkeypatch.setattr(scheduler, "settings", local)
+    polled = []
+
+    async def fake_collect(source, http):
+        polled.append(source)
+        await asyncio.sleep(0.01)  # long enough for the other tick to queue on the lock
+        db.log_run(local.db_path, source, db.now_iso(), True, False, 1, None, None)
+
+    async def fake_backfill(http):
+        polled.append("backfill")
+        db.log_run(local.db_path, scheduler.BACKFILL_SOURCE, db.now_iso(), True, False, 1, None, None)
+
+    monkeypatch.setattr(scheduler, "collect_source", fake_collect)
+    monkeypatch.setattr(scheduler, "backfill_drift", fake_backfill)
+    monkeypatch.setattr(scheduler, "capture_recommendation", lambda: False)
+
+    async def both():
+        await asyncio.gather(scheduler.tick(), scheduler.tick())
+
+    asyncio.run(both())
+    assert sorted(polled) == sorted([*MODULES, "backfill"])

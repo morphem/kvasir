@@ -52,23 +52,36 @@ def due(source: str, status: dict) -> bool:
     return datetime.now(timezone.utc) - stamp >= timedelta(minutes=interval_minutes(source))
 
 
+async def tick() -> None:
+    """Collect whatever is due, once.
+
+    "Due" is decided *inside* the lock. Deciding it before, as this loop once did, meant a tick
+    that had to wait for another collection — the boot catch-up, a manual refresh — then
+    collected the same stale list again: every source was polled twice on each restart.
+    """
+    async with LOCK:
+        status = db.source_status(settings.db_path)
+        pending = [source for source in MODULES if due(source, status)]
+        # The run history is due on its own clock, tracked in the same run log, so a
+        # restart neither loses nor repeats it.
+        backfill_due = due(BACKFILL_SOURCE, status)
+        if not (pending or backfill_due):
+            return
+        async with client() as http:
+            for source in pending:
+                await collect_source(source, http)
+            if backfill_due:
+                await backfill_drift(http)
+    # Fresh data may have moved the verdict, and a drift backfill can flip the veto on its
+    # own; either way the decision goes to the archive.
+    capture_recommendation()
+
+
 async def run_forever() -> None:
+    """Tick at once, then every minute — the first tick is the boot-time catch-up."""
     while True:
         try:
-            status = db.source_status(settings.db_path)
-            pending = [source for source in MODULES if due(source, status)]
-            # The run history is due on its own clock, tracked in the same run log, so a
-            # restart neither loses nor repeats it.
-            backfill_due = due(BACKFILL_SOURCE, status)
-            if pending or backfill_due:
-                async with LOCK, client() as http:
-                    for source in pending:
-                        await collect_source(source, http)
-                    if backfill_due:
-                        await backfill_drift(http)
-                # Fresh data may have moved the verdict, and a drift backfill can flip the
-                # veto on its own; either way the decision goes to the archive.
-                capture_recommendation()
+            await tick()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the loop must outlive any single failure
