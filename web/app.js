@@ -3,6 +3,7 @@
    parses in a blink, and the SVG here is simpler than the config a chart library would need. */
 
 const TIER_STORAGE_KEY = "kvasir.tier";
+const PATIENCE_STORAGE_KEY = "kvasir.patience";
 const PANEL_STORAGE_KEY = "kvasir.panel";
 
 /* The page grew past the point where scrolling is navigation: seven sections of tables, and
@@ -13,15 +14,16 @@ const PANELS = [
   { id: "tasks", label: "Task → agent" },
   { id: "budget", label: "Month on this tier" },
   { id: "value", label: "Where value sits" },
-  { id: "timing", label: "How it feels" },
+  { id: "models", label: "All models" },
   { id: "drift", label: "Drift" },
-  { id: "copilot", label: "Copilot prices" },
   { id: "method", label: "Method" },
 ];
 const state = {
   view: null,
   showAll: false,
   tier: null,
+  patience: null,
+  waitFilter: null, // seconds, or null for any wait — the models table's own filter
   selected: null,
   everyVariant: false,
   families: [], // model keys with their variant line drawn on the scatter, in activation order
@@ -37,21 +39,35 @@ function familyHue(key) {
   return index === -1 ? null : FAMILY_HUES[index];
 }
 
-/* The tier is a view setting, not a user account: it lives in localStorage, survives every
-   reload and deploy, and falls back to the tier the server nominates. */
-function storedTier() {
+/* The tier and the patience are view settings, not a user account: they live in
+   localStorage, survive every reload and deploy, and fall back to what the server nominates. */
+function stored(key) {
   try {
-    return localStorage.getItem(TIER_STORAGE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-function storeTier(id) {
+function store(key, value) {
   try {
-    localStorage.setItem(TIER_STORAGE_KEY, id);
+    localStorage.setItem(key, value);
   } catch {
     /* private browsing: the switch still works, it just forgets between visits */
+  }
+}
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* A switch re-answers the whole page. The View Transition turns that into one cross-fade
+   in which each card keeps its place, so the eye sees which picks moved rather than a
+   flash of new text. Browsers without it, and readers who asked for less motion, get the
+   plain re-render. */
+function rerender() {
+  if (document.startViewTransition && !reducedMotion()) {
+    document.startViewTransition(() => renderAll({ animate: true }));
+  } else {
+    renderAll({ animate: !reducedMotion() });
   }
 }
 
@@ -88,8 +104,7 @@ function showPanel(id, { scroll = false } = {}) {
   // the verdict is on screen should not move anything.
   const tabs = $("#section-tabs");
   if (scroll && tabs && tabs.getBoundingClientRect().top < 0) {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    tabs.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    tabs.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
   }
 }
 
@@ -108,9 +123,10 @@ function renderTabs() {
   });
 }
 
-function plan() {
+function plan(tier = state.tier) {
   const plans = (state.view && state.view.plans) || {};
-  return plans[state.tier] || Object.values(plans)[0] || null;
+  const byPatience = plans[tier] || Object.values(plans)[0] || {};
+  return byPatience[state.patience] || Object.values(byPatience)[0] || null;
 }
 
 /* ---------- variant selection: the chart and the ladder share one detail panel ---------- */
@@ -215,7 +231,14 @@ function renderFamilyPicker(view) {
 const $ = (sel) => document.querySelector(sel);
 const usd = (value) =>
   value === null || value === undefined ? "—" : `$${value < 1 ? value.toFixed(2) : value.toFixed(2)}`;
-const pct = (value) => (value === null || value === undefined ? "—" : `${value.toFixed(1)}%`);
+/* The Intelligence Index is a score, not a percentage: it is printed bare. */
+const idx = (value) => (value === null || value === undefined ? "—" : value.toFixed(1));
+const secs = (value) =>
+  value === null || value === undefined ? "—" : value < 10 ? `${value.toFixed(1)} s` : `${Math.round(value)} s`;
+const taskCredits = (candidate, view) =>
+  candidate && candidate.cost_usd !== null && candidate.cost_usd !== undefined
+    ? candidate.cost_usd / ((view && view.credit_usd) || 0.01)
+    : null;
 const num = (value) => (value === null || value === undefined ? "—" : value.toLocaleString("en-US"));
 const credits = (value) =>
   value === null || value === undefined ? "—" : Math.round(value).toLocaleString("en-US");
@@ -285,16 +308,17 @@ function renderTierTabs(view) {
   const tabs = $("#tier-tabs");
   tabs.innerHTML = "";
   (view.budget_tiers || []).forEach((tier) => {
-    const tierPlan = view.plans[tier.id] || {};
+    const tierPlan = plan(tier.id) || {};
     const active = tier.id === state.tier;
     const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
       <b>${escapeHtml(tier.name)}</b>
       <span>${Math.round(tier.credits / 1000)}K credits · $${num(tierPlan.usd)}</span>
     </button>`);
     button.addEventListener("click", () => {
+      if (state.tier === tier.id) return;
       state.tier = tier.id;
-      storeTier(tier.id);
-      renderAll();
+      store(TIER_STORAGE_KEY, tier.id);
+      rerender();
     });
     tabs.append(button);
   });
@@ -304,6 +328,35 @@ function renderTierTabs(view) {
   $("#tier-note").textContent = current
     ? `${num(current.credits)} credits a month · about $${num(current.usd)}`
     : "";
+}
+
+/* Patience is the second switch, and it reads like the first: a name, and underneath it the
+   numbers it stands for — the longest wait before the first answer the scout and the worker
+   may put you through. The architect is never on this clock. */
+const ceilingText = (seconds) => (seconds === null || seconds === undefined ? "any" : `${seconds} s`);
+
+function renderPatienceTabs(view) {
+  const tabs = $("#patience-tabs");
+  if (!tabs) return;
+  tabs.innerHTML = "";
+  (view.patience || []).forEach((level) => {
+    const active = level.id === state.patience;
+    const detail =
+      level.scout === null && level.worker === null
+        ? "no limit on waiting"
+        : `scout ${ceilingText(level.scout)} · worker ${ceilingText(level.worker)}`;
+    const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
+      <b>${escapeHtml(level.label)}</b>
+      <span>${escapeHtml(detail)}</span>
+    </button>`);
+    button.addEventListener("click", () => {
+      if (state.patience === level.id) return;
+      state.patience = level.id;
+      store(PATIENCE_STORAGE_KEY, level.id);
+      rerender();
+    });
+    tabs.append(button);
+  });
 }
 
 /* ---------- verdict cards ---------- */
@@ -320,20 +373,87 @@ function copilotBadge(copilot) {
   return `<span class="badge ok">Copilot · $${copilot.input_usd}/$${copilot.output_usd} per 1M</span>`;
 }
 
-function renderVerdicts(view) {
-  // Bars are only readable against a common scale, and the board is the honest one: the
-  // fastest model on it sets full width, the longest wait sets the other.
-  const measured = view.candidates.map((c) => c.speed).filter(Boolean);
-  view._scales = {
-    speed: Math.max(1, ...measured.map((s) => s.tokens_per_second || 0)),
-    wait: Math.max(1, ...measured.map((s) => s.first_answer_seconds || 0)),
+/* ---------- the clock: one wait scale for the whole page ----------
+
+   Waits run from under a second to five minutes, so a linear bar would draw every quick
+   model as the same sliver. A square-root scale keeps 4 s and 13 s apart and still puts
+   170 s near the end. The ticks are the patience ceilings: the limits a loop role has to beat. */
+const CLOCK_MAX_S = 300;
+const CLOCK_TICKS = [10, 30, 90];
+const clockX = (seconds) => Math.min(1, Math.sqrt(Math.max(0, seconds) / CLOCK_MAX_S));
+
+function clock(role, wait, ceiling, animate) {
+  const ticks = CLOCK_TICKS.map(
+    (t) =>
+      `<span class="tick ${t === ceiling ? "limit" : ""}" style="left:${(clockX(t) * 100).toFixed(1)}%">
+         <em>${t} s</em></span>`
+  ).join("");
+  if (wait === null || wait === undefined) {
+    return `<div class="clock untimed">
+      <div class="clock-head"><b>not timed</b><span>no wait measured at this effort</span></div>
+      <div class="clock-track">${ticks}</div>
+    </div>`;
+  }
+  // The bar takes longer to fill the longer the real wait is: the role that answers first
+  // lands first. Only on load and on a switch — never on the background refresh.
+  const duration = Math.round(250 + 1100 * clockX(wait));
+  const limit =
+    role === "architect"
+      ? "not on the clock: planning is waited on once"
+      : ceiling === null || ceiling === undefined
+      ? "to the first answer — no limit set"
+      : `to the first answer — limit ${ceiling} s`;
+  return `<div class="clock">
+    <div class="clock-head"><b>${secs(wait).replace(" s", "<small>s</small>")}</b><span>${escapeHtml(limit)}</span></div>
+    <div class="clock-track">
+      <i class="clock-bar ${role === "architect" ? "free" : ""} ${animate ? "run" : ""}"
+         style="--to:${(clockX(wait) * 100).toFixed(1)}%;--dur:${duration}ms"></i>
+      ${ticks}
+    </div>
+  </div>`;
+}
+
+/* Numbers that change on a switch count to their new value instead of snapping, so the eye
+   can tell what moved. Remembered by key across re-renders; the first render just sets. */
+const COUNTED = new Map();
+
+function countTo(el, key, to, animate) {
+  const from = COUNTED.get(key);
+  COUNTED.set(key, to);
+  if (!animate || from === undefined || from === to || to === null) {
+    el.textContent = credits(to);
+    return;
+  }
+  const start = performance.now();
+  const span = 480;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / span);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = credits(from + (to - from) * eased);
+    if (t < 1) requestAnimationFrame(step);
   };
+  requestAnimationFrame(step);
+}
+
+function runCounters(root, animate) {
+  root.querySelectorAll("[data-count]").forEach((el) => {
+    const value = el.dataset.value === "" ? null : Number(el.dataset.value);
+    countTo(el, el.dataset.count, value, animate);
+  });
+}
+
+function renderVerdicts(view, animate) {
+  // Bars are only readable against a common scale, and the board is the honest one: the
+  // fastest model on it sets full width.
+  const measured = view.candidates.map((c) => c.speed).filter(Boolean);
+  view._scales = { speed: Math.max(1, ...measured.map((s) => s.tokens_per_second || 0)) };
 
   const box = $("#verdicts");
   const current = plan();
   box.innerHTML = "";
+  const roles = (current && current.roles) || {};
   view.tiers.forEach((role) => {
-    const slot = current && current.roles ? current.roles[role.id] : null;
+    const slot = roles[role.id];
     if (!slot) return;
     const pick = slot.pick;
     if (!pick) {
@@ -352,10 +472,11 @@ function renderVerdicts(view) {
     const effort =
       pick.effort === "default" ? "" : `<em class="pick-effort">${escapeHtml(pick.effort_label)}</em>`;
     const notes = [];
+    const asides = [];
     if (slot.out_of_reach) {
       const reach = slot.out_of_reach;
       notes.push(
-        `The best on the board is ${reach.label} at ${pct(reach.score)}, ` +
+        `The best on the board is ${reach.label} at ${idx(reach.score)}, ` +
           `${credits(reach.per_task_credits)} credits a task — above this tier's ` +
           `${credits(reach.ceiling_credits)}-credit ceiling for planning.`
       );
@@ -364,34 +485,88 @@ function renderVerdicts(view) {
       notes.push(`Drift veto: ${slot.drift_replaced} scores as well but is sliding on AI Stupid Level.`);
     }
     if (slot.same_as) {
-      notes.push(`Same model as the ${slot.same_as} at this tier — one answer, not two.`);
+      notes.push(`Same model and effort as the ${slot.same_as} at this tier — one answer, not two.`);
+    } else {
+      // One model at three efforts is a real answer when it leads at every price point, and
+      // it is worth saying so rather than letting three cards look like three choices.
+      const siblings = Object.entries(roles)
+        .filter(([other, data]) => other !== role.id && data.pick && data.pick.key === pick.key)
+        .map(([other]) => other);
+      if (siblings.length && role.id !== "architect") {
+        asides.push(`Same model as the ${siblings.join(" and the ")}, at a different effort.`);
+      }
     }
     box.append(
-      tag(`<article class="card ${role.id}">
+      tag(`<article class="card ${role.id}" style="view-transition-name:card-${role.id}">
         <div class="role-band">
           <span class="role-name">${escapeHtml(role.name)}</span>
           <span class="role-line">${escapeHtml(role.role)}</span>
         </div>
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
+        ${clock(role.id, budgetWait(pick), slot.wait_ceiling_seconds, animate)}
         <div class="metrics">
-          <div class="metric"><b>${pct(pick.score)}</b><span>CursorBench</span></div>
-          <div class="metric"><b>${credits(slot.per_task_credits)}</b><span>credits / task</span></div>
-          <div class="metric"><b>${credits(slot.month_credits)}</b><span>credits / mo</span></div>
+          <div class="metric"><b>${idx(pick.score)}</b><span>Intelligence</span></div>
+          <div class="metric"><b data-count="card-${role.id}-task" data-value="${slot.per_task_credits ?? ""}"></b><span>credits / task</span></div>
+          <div class="metric"><b data-count="card-${role.id}-month" data-value="${slot.month_credits ?? ""}"></b><span>credits / mo</span></div>
         </div>
         <p class="why">${escapeHtml(slot.why || "")}</p>
         ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
+        ${asides.map((aside) => `<p class="why aside">${escapeHtml(aside)}</p>`).join("")}
         ${propertyRows(pick, view)}
       </article>`)
     );
   });
+  runCounters(box, animate);
 
   renderBenchmarkNote(view);
+  renderPricingNote(view);
 
   const tier = plan();
+  const level = (view.patience || []).find((p) => p.id === state.patience);
   $("#verdict-sub").textContent = tier
-    ? `Filled inside the ${tier.name} tier's monthly budget — ${tier.used_pct}% of it planned, ` +
-      `about $${num(tier.month_usd)} a month.`
+    ? `Filled inside the ${tier.name} tier's monthly budget at ${
+        level ? level.label.toLowerCase() : state.patience
+      } patience — ${tier.used_pct}% of it planned, about $${num(tier.month_usd)} a month.`
     : "";
+}
+
+const budgetWait = (candidate) => (candidate && candidate.speed ? candidate.speed.first_answer_seconds : null);
+
+/* A model GitHub already sells can arrive before its price does: Artificial Analysis times
+   and scores a release on day one and prices it days later. Until then it cannot be planned,
+   and the page says so instead of letting it look forgotten. */
+function renderPricingNote(view) {
+  // Only models with no priced variant at all: an old model whose low effort was never priced
+  // is not waiting for anything, and "not priced yet" would be a false promise about it.
+  const pricedKeys = new Set(view.candidates.filter((c) => c.priced).map((c) => c.key));
+  const fresh = [];
+  const never = [];
+  const seen = new Set();
+  (view.unpriced || []).forEach((u) => {
+    if (pricedKeys.has(u.key) || seen.has(u.key)) return;
+    seen.add(u.key);
+    const name = u.label.split(" · ")[0];
+    const days = u.released ? (Date.now() - new Date(u.released).getTime()) / 86400000 : Infinity;
+    (days <= 30 ? fresh : never).push(name);
+  });
+  const verdict = fresh.length
+    ? `Not priced yet: ${fresh.join(", ")}. Artificial Analysis has scored and timed ` +
+      `${fresh.length > 1 ? "them" : "it"} but not published a cost per task, so ` +
+      `${fresh.length > 1 ? "they cannot" : "it cannot"} be planned into a tier yet — listed under All models, ` +
+      `and joining the roles as soon as the price lands.`
+    : "";
+  const value = [
+    verdict,
+    never.length ? `Scored but never priced by Artificial Analysis, so off this chart: ${never.join(", ")}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  [["#pricing-note", verdict], ["#unpriced-note", value]].forEach(([sel, text]) => {
+    const el = $(sel);
+    if (!el) return;
+    el.hidden = !text;
+    el.textContent = text;
+  });
 }
 
 /* A re-baselined benchmark is the single change most likely to make this page look broken:
@@ -412,15 +587,11 @@ function renderBenchmarkNote(view) {
     note.hidden = true;
     return;
   }
-  const models = new Set(
-    [...view.candidates, ...(view.excluded || [])].map((candidate) => candidate.key)
-  ).size;
   const top = Math.max(...view.candidates.map((candidate) => candidate.score));
   note.textContent =
-    `CursorBench ${current.version} replaced ${previous.version} on ` +
-    `${since.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — ${models} models ` +
-    `re-run, top score now ${top.toFixed(1)}%, and scores either side of that date are not the ` +
-    `same measurement.`;
+    `Intelligence Index v${current.version} replaced v${previous.version} on ` +
+    `${since.toLocaleDateString("en-GB", { day: "numeric", month: "short" })} — top score now ` +
+    `${top.toFixed(1)}, and scores either side of that date are not the same measurement.`;
 }
 
 /* The card foot is a property sheet, not a bag of chips.
@@ -437,28 +608,32 @@ function bar(fraction, tone) {
 
 function propertyRows(pick, view) {
   const speed = pick.speed || {};
-  const scales = view._scales || { speed: 1, wait: 1 };
+  const scales = view._scales || { speed: 1 };
   const drift = pick.drift;
   const copilot = pick.copilot;
+  const borrowed =
+    speed.tokens_per_second && speed.measured_effort && speed.measured_effort !== pick.effort
+      ? ` <span class="dim">at ${escapeHtml(speed.measured_effort)}</span>`
+      : "";
 
   const rows = [
     speed.tokens_per_second
       ? [
           "types",
-          `<b class="cyan">${Math.round(speed.tokens_per_second)}</b> tok/s`,
+          `<b class="cyan">${Math.round(speed.tokens_per_second)}</b> tok/s${borrowed}`,
           bar(speed.tokens_per_second / scales.speed, "cyan-fill"),
         ]
       : ["types", '<span class="dim">not measured</span>', ""],
-    speed.first_answer_seconds
-      ? [
-          "you wait",
-          `<b>${speed.first_answer_seconds}s</b> to first answer`,
-          bar(speed.first_answer_seconds / scales.wait, "violet-fill"),
-        ]
-      : ["you wait", '<span class="dim">not measured</span>', ""],
     speed.end_to_end_seconds
-      ? ["one answer", `${speed.end_to_end_seconds}s per 500 tokens`, ""]
+      ? ["one answer", `${secs(speed.end_to_end_seconds)} for 500 tokens`, ""]
       : ["one answer", '<span class="dim">not measured</span>', ""],
+    [
+      "coding",
+      pick.terminal_bench === null || pick.terminal_bench === undefined
+        ? '<span class="dim">not run</span>'
+        : `${pick.terminal_bench.toFixed(1)}% <span class="dim">Terminal-Bench</span>`,
+      "",
+    ],
     [
       "drift",
       drift && drift.score !== null
@@ -468,7 +643,13 @@ function propertyRows(pick, view) {
         : '<span class="dim">not tracked</span>',
       "",
     ],
-    ["per task", `${usd(pick.cost_usd)} · ${pick.steps} steps`, ""],
+    [
+      "per task",
+      `${usd(pick.cost_usd)}${
+        pick.output_tokens ? ` · ${num(pick.output_tokens)} tokens out` : ""
+      }`,
+      "",
+    ],
     [
       "copilot",
       copilot
@@ -488,14 +669,17 @@ function propertyRows(pick, view) {
 
 /* ---------- monthly budget ---------- */
 
-function renderBudget(view) {
+function renderBudget(view, animate) {
   const current = plan();
   if (!current) return;
   const assumptions = view.assumptions;
   const used = current.used_pct ?? 0;
 
-  $("#budget-title").textContent =
-    `${current.name}: ${credits(current.month_credits)} of ${num(current.credits)} credits`;
+  const title = $("#budget-title");
+  title.innerHTML = `${escapeHtml(current.name)}: <span data-count="budget-month" data-value="${
+    current.month_credits
+  }"></span> of ${num(current.credits)} credits`;
+  runCounters(title, animate);
 
   const fill = $("#budget-fill");
   fill.style.width = `${Math.min(100, used)}%`;
@@ -542,9 +726,12 @@ function renderBudget(view) {
     `${assumptions.tasks_per_month} tasks a month (${assumptions.tasks_by_role.architect} planning, ` +
     `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
     `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
-    `The worker and the scout are roles you wait on all day, so a model measured below ` +
-    `${assumptions.speed_floor_tps} output tokens a second cannot take one — the architect is exempt, ` +
-    `because you wait on planning once and on purpose. A model nobody has timed is not treated as slow. ` +
+    `A task is one Artificial Analysis Intelligence Index task, averaged over its ten evaluations. ` +
+    `The worker and the scout are roles you wait on all day, so at this patience a variant that ` +
+    `takes longer than ${ceilingText((assumptions.patience[state.patience] || {}).worker)} (worker) or ` +
+    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) to its first answer ` +
+    `cannot take one — the architect is exempt, because you wait on planning once and on purpose. ` +
+    `A variant nobody has timed is not treated as slow. ` +
     `The plan then spends the surplus up to ${Math.round(assumptions.target_utilisation * 100)}% of the ` +
     `tier and never plans past ${Math.round(assumptions.max_utilisation * 100)}% — an unused credit ` +
     `buys nothing, and the month is a model rather than a meter. ` +
@@ -577,7 +764,7 @@ function renderGaps(gaps) {
           <circle cx="376" cy="30" r="7" fill="${colour}"/>
           <text x="24" y="58" fill="#8b97a8" font-size="12" font-family="ui-monospace,monospace">${escapeHtml(gap.from_label)}</text>
           <text x="376" y="58" fill="#e8ecf1" font-size="12" font-family="ui-monospace,monospace" text-anchor="end">${escapeHtml(gap.to_label)}</text>
-          <text x="200" y="18" fill="${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pp · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
+          <text x="200" y="18" fill="${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pts · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
         </svg>
         <p class="verdict-line"><b class="mono" style="color:${colour}">${usd(gap.usd_per_pp)} per point</b> — ${escapeHtml(message)}</p>
       </div>`)
@@ -601,7 +788,8 @@ function renderTasks(view) {
         <td><span class="tier-chip ${task.accent}">${escapeHtml(task.tier_name)}</span></td>
         <td class="pick-cell">${escapeHtml(name)}${effort ? `<em>${escapeHtml(effort)}</em>` : ""}
             ${pick && !pick.copilot ? '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>' : ""}</td>
-        <td class="num">${pick ? pct(pick.score) : "—"}</td>
+        <td class="num">${pick ? idx(pick.score) : "—"}</td>
+        <td class="num">${pick ? secs(budgetWait(pick)) : "—"}</td>
         <td class="num">${slot ? credits(slot.per_task_credits) : "—"}</td>
       </tr>`)
     );
@@ -615,7 +803,7 @@ function renderScatter(view) {
   const W = 1000;
   const H = 470;
   const pad = { l: 62, r: 24, t: 24, b: 54 };
-  const points = view.candidates.filter((c) => c.cost_usd > 0);
+  const points = view.candidates.filter((c) => c.priced && c.cost_usd > 0);
   if (!points.length) return;
 
   const costs = points.map((p) => Math.log10(p.cost_usd));
@@ -635,7 +823,7 @@ function renderScatter(view) {
   const colour = { architect: "#7c5cff", worker: "#38e1c4", scout: "#8b97a8" };
 
   const parts = [];
-  [0.03, 0.1, 0.3, 1, 3, 10, 20].forEach((tick) => {
+  [0.01, 0.03, 0.1, 0.3, 1, 3, 10].forEach((tick) => {
     const x = sx(tick);
     if (x < pad.l - 2 || x > W - pad.r + 2) return;
     parts.push(`<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}" stroke="#222a3d" stroke-width="1"/>`);
@@ -644,9 +832,9 @@ function renderScatter(view) {
   for (let score = Math.ceil(y0 / 5) * 5; score <= y1; score += 5) {
     const y = sy(score);
     parts.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#222a3d" stroke-width="1"/>`);
-    parts.push(`<text x="${pad.l - 12}" y="${y + 4}" fill="#8b97a8" font-size="12" text-anchor="end" font-family="ui-monospace,monospace">${score}%</text>`);
+    parts.push(`<text x="${pad.l - 12}" y="${y + 4}" fill="#8b97a8" font-size="12" text-anchor="end" font-family="ui-monospace,monospace">${score}</text>`);
   }
-  parts.push(`<text x="${W / 2}" y="${H - 8}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.6">AVERAGE COST PER TASK</text>`);
+  parts.push(`<text x="${W / 2}" y="${H - 8}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.6">COST OF ONE INDEX TASK</text>`);
 
   const frontier = view.ladder.filter((rung) => rung.cost_usd > 0);
   if (frontier.length > 1) {
@@ -675,7 +863,7 @@ function renderScatter(view) {
     parts.push(
       `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius}" fill="${fill}" ${
         role || hue ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
-      }><title>${escapeHtml(point.label)} — ${pct(point.score)}, ${usd(point.cost_usd)}, ${point.steps} steps</title></circle>`
+      }/>`
     );
     if (selected) {
       parts.push(
@@ -702,11 +890,65 @@ function renderScatter(view) {
     }
     /* The grey dots are small, so each gets an invisible, much larger hit target. */
     parts.push(
-      `<circle class="hit" data-id="${escapeHtml(id)}" cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="11" fill="transparent"><title>${escapeHtml(point.label)}</title></circle>`
+      `<circle class="hit" data-id="${escapeHtml(id)}" cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="11" fill="transparent"
+         tabindex="0" role="button" aria-label="${escapeHtml(`${point.label}: ${idx(point.score)}, ${usd(point.cost_usd)} a task`)}"/>`
     );
   });
 
+  /* The crosshair runs from the hovered dot to both axes, so its price and score can be read
+     off the scale rather than guessed at. Drawn once, moved on hover. */
+  parts.push(`<g id="crosshair" visibility="hidden" pointer-events="none">
+    <line id="cross-x" stroke="#8b97a8" stroke-width="1" stroke-dasharray="3 4"/>
+    <line id="cross-y" stroke="#8b97a8" stroke-width="1" stroke-dasharray="3 4"/>
+  </g>`);
   svg.innerHTML = parts.join("");
+  svg.dataset.padL = pad.l;
+  svg.dataset.baseY = H - pad.b;
+}
+
+/* ---------- scatter hover: one tooltip, one crosshair ---------- */
+
+function showTip(hit) {
+  const svg = $("#scatter");
+  const tip = $("#scatter-tip");
+  const candidate = findCandidate(hit.getAttribute("data-id"));
+  if (!svg || !tip || !candidate) return;
+  const cx = Number(hit.getAttribute("cx"));
+  const cy = Number(hit.getAttribute("cy"));
+
+  const cross = svg.querySelector("#crosshair");
+  const lineX = svg.querySelector("#cross-x");
+  const lineY = svg.querySelector("#cross-y");
+  lineX.setAttribute("x1", cx); lineX.setAttribute("x2", cx);
+  lineX.setAttribute("y1", cy); lineX.setAttribute("y2", svg.dataset.baseY);
+  lineY.setAttribute("x1", svg.dataset.padL); lineY.setAttribute("x2", cx);
+  lineY.setAttribute("y1", cy); lineY.setAttribute("y2", cy);
+  cross.setAttribute("visibility", "visible");
+
+  const roles = rolesPickingNow(candidate);
+  const onFrontier = frontierIds().has(candidateId(candidate));
+  tip.innerHTML = `
+    <b>${escapeHtml(candidate.label)}</b>
+    <span>${idx(candidate.score)} Intelligence · ${credits(taskCredits(candidate, state.view))} credits a task</span>
+    <span>${
+      budgetWait(candidate) === null ? "wait not timed" : `waits ${secs(budgetWait(candidate))} to answer`
+    }</span>
+    ${roles.length ? `<span class="cyan">today's ${escapeHtml(roles.join(" + "))}</span>` : ""}
+    ${!roles.length && onFrontier ? '<span class="cyan">on the value frontier</span>' : ""}`;
+  const rect = svg.getBoundingClientRect();
+  const scale = rect.width / 1000;
+  const left = cx * scale;
+  tip.style.left = `${Math.min(rect.width - 12, Math.max(12, left))}px`;
+  tip.style.top = `${cy * scale}px`;
+  tip.classList.toggle("flip", left > rect.width * 0.62);
+  tip.hidden = false;
+}
+
+function hideTip() {
+  const tip = $("#scatter-tip");
+  const cross = $("#crosshair");
+  if (tip) tip.hidden = true;
+  if (cross) cross.setAttribute("visibility", "hidden");
 }
 
 /* ---------- variant detail: what a clicked dot opens ---------- */
@@ -757,9 +999,14 @@ function renderChartDetail() {
       <button class="toggle" id="detail-close" aria-label="Close">×</button>
     </div>
     <div class="badges">
-      <span class="badge">${pct(candidate.score)} CursorBench</span>
-      <span class="badge">${usd(candidate.cost_usd)} / task</span>
-      <span class="badge">${candidate.steps} steps · ${num(candidate.tokens)} tokens</span>
+      <span class="badge">${idx(candidate.score)} Intelligence</span>
+      <span class="badge">${
+        candidate.priced ? `${credits(taskCredits(candidate, state.view))} credits / task` : "not priced yet"
+      }</span>
+      <span class="badge">${
+        budgetWait(candidate) === null ? "wait not timed" : `waits ${secs(budgetWait(candidate))}`
+      }</span>
+      ${candidate.output_tokens ? `<span class="badge">${num(candidate.output_tokens)} tokens out</span>` : ""}
       ${driftBadge(candidate.drift)}
       ${copilotBadge(candidate.copilot)}
       ${frontierLine}
@@ -769,7 +1016,7 @@ function renderChartDetail() {
       dominator && !onFrontier
         ? `<p class="why">A cheaper variant (${escapeHtml(
             dominator.label
-          )}) reaches ${pct(dominator.score)} for ${usd(dominator.cost_usd)} — this one only makes
+          )}) reaches ${idx(dominator.score)} for ${usd(dominator.cost_usd)} — this one only makes
            sense when you specifically want more than that and accept paying for it.</p>`
         : ""
     }
@@ -786,7 +1033,9 @@ function renderChartDetail() {
                  const vFrontier = frontierIds().has(id);
                  return `<button class="family-row ${here ? "here" : ""}" data-id="${escapeHtml(id)}">
                    <span class="headline">${escapeHtml(variant.effort_label)}${vFrontier ? ' <i class="fmark cyan">frontier</i>' : ""}</span>
-                   <span class="mono">${pct(variant.score)} · ${usd(variant.cost_usd)}</span>
+                   <span class="mono">${idx(variant.score)} · ${
+                     variant.priced ? `${credits(taskCredits(variant, state.view))} cr` : "unpriced"
+                   } · ${secs(budgetWait(variant))}</span>
                  </button>`;
                })
                .join("")}
@@ -812,7 +1061,7 @@ function renderLadder(view) {
      frontier rungs keep their verdict styling, the dominated ones say what beats them. */
   const rows = state.everyVariant
     ? view.candidates
-        .filter((c) => c.cost_usd > 0)
+        .filter((c) => c.priced && c.cost_usd > 0)
         .sort((a, b) => (a.cost_uusd ?? 0) - (b.cost_uusd ?? 0))
         .map((candidate) => ({
           id: candidateId(candidate),
@@ -837,7 +1086,7 @@ function renderLadder(view) {
         tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
           <div><span class="headline">${escapeHtml(candidate.label)}</span>
             <div class="step">off the frontier — ${escapeHtml(dominator ? dominator.label : "a cheaper variant")} scores at least as much for less</div></div>
-          <div class="price">${pct(candidate.score)} · ${usd(candidate.cost_usd)}</div>
+          <div class="price">${idx(candidate.score)} · ${usd(candidate.cost_usd)}</div>
         </button>`)
       );
       return;
@@ -849,7 +1098,7 @@ function renderLadder(view) {
         tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
           <div><span class="headline">${escapeHtml(rung.label)}</span>
             <div class="step">starting point — as cheap as it gets</div></div>
-          <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
+          <div class="price">${idx(rung.score)} · ${usd(rung.cost_usd)}</div>
         </button>`)
       );
       return;
@@ -863,8 +1112,8 @@ function renderLadder(view) {
     box.append(
       tag(`<button class="${cls}" data-id="${escapeHtml(id)}">
         <div><span class="headline">${escapeHtml(rung.label)}</span>
-          <div class="step">from ${escapeHtml(rung.from_label)}: +${rung.delta_score_pp} pp for +${usd(rung.delta_cost_usd)} → <b>${usd(rung.usd_per_pp)}/pp</b> — ${message}</div></div>
-        <div class="price">${pct(rung.score)} · ${usd(rung.cost_usd)}</div>
+          <div class="step">from ${escapeHtml(rung.from_label)}: +${rung.delta_score_pp} pts for +${usd(rung.delta_cost_usd)} → <b>${usd(rung.usd_per_pp)} a point</b> — ${message}</div></div>
+        <div class="price">${idx(rung.score)} · ${usd(rung.cost_usd)}</div>
       </button>`)
     );
   });
@@ -876,8 +1125,8 @@ function renderLadder(view) {
 
 /* ---------- sortable tables ----------
 
-   Two of the four tables on this page are data you scan; the other two carry an order that
-   means something (the task catalogue is grouped by role, the budget breakdown reads
+   Two of the four tables on this page are data you scan (drift, all models); the other two
+   carry an order that means something (the task catalogue is grouped by role, the budget breakdown reads
    architect-worker-scout) and sorting them would destroy the point. So this is opt-in.
 
    Cells carry `data-sort` with the raw value, because the rendered text is formatted for
@@ -886,10 +1135,6 @@ function renderLadder(view) {
    ascending by score never opens with a wall of models nobody benchmarked. */
 
 const SORT_STATE = {};
-
-// Copilot's own capability ladder, so the Category column sorts by weight rather than by
-// the accident of Lightweight coming before Powerful in the alphabet.
-const CATEGORY_RANK = { lightweight: 1, versatile: 2, powerful: 3 };
 
 function sortValue(cell) {
   const raw = cell.dataset.sort;
@@ -1091,157 +1336,129 @@ function renderDrift(drift, history, source) {
   makeSortable("drift", { index: 1, dir: -1 });
 }
 
-/* ---------- what it feels like to work with ----------
+/* ---------- all models: score, price and the wait in one table ----------
 
-   Every timed variant, not just the three the verdict picked, because the interesting fact
-   lives between efforts of one model rather than between models. The bar is the whole point
-   of the table: a number in seconds is abstract, a bar you can compare down a column is not. */
+   This used to be two tables — "how it feels" and "Copilot prices" — that repeated each
+   other's columns. One row per variant now, because the interesting fact lives between
+   efforts of one model rather than between models. The wait filter uses the same ceilings as
+   the patience switch, so the two speak one vocabulary. */
 
-function renderFeel(view) {
-  const body = $("#feel tbody");
+const WAIT_FILTERS = [null, 10, 30, 90];
+
+function renderWaitFilter() {
+  const box = $("#wait-filter");
+  if (!box) return;
+  box.innerHTML = WAIT_FILTERS.map(
+    (limit) =>
+      `<button class="toggle" data-limit="${limit ?? ""}" aria-pressed="${state.waitFilter === limit}">${
+        limit === null ? "Any wait" : `≤ ${limit} s`
+      }</button>`
+  ).join("");
+  box.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const raw = button.getAttribute("data-limit");
+      state.waitFilter = raw === "" ? null : Number(raw);
+      renderWaitFilter();
+      renderModels(state.view);
+    });
+  });
+}
+
+function renderModels(view) {
+  const body = $("#models tbody");
   if (!body) return;
   body.innerHTML = "";
 
-  const seen = new Map();
-  [...view.candidates, ...(view.excluded || [])].forEach((candidate) => {
-    const speed = candidate.speed;
-    if (!speed || (!speed.first_answer_seconds && !speed.tokens_per_second)) return;
-    const id = `${candidate.key}|${candidate.effort}`;
-    if (!seen.has(id)) seen.set(id, candidate);
+  // Everything GitHub sells us belongs here, including the models the organisation has
+  // switched off — their numbers are facts, and their absence from the verdict is a choice
+  // worth showing next to them.
+  const rows = [...view.candidates, ...(view.excluded || [])].filter((candidate) => {
+    if (state.waitFilter === null) return true;
+    const wait = budgetWait(candidate);
+    return wait !== null && wait <= state.waitFilter;
   });
 
-  const rows = [...seen.values()];
-  const worst = Math.max(1, ...rows.map((c) => c.speed.first_answer_seconds || 0));
-  rows.sort((a, b) => (a.speed.first_answer_seconds || 1e9) - (b.speed.first_answer_seconds || 1e9));
-
   rows.forEach((candidate) => {
-    const speed = candidate.speed;
-    const wait = speed.first_answer_seconds;
+    const wait = budgetWait(candidate);
+    const cr = taskCredits(candidate, view);
+    const speed = candidate.speed || {};
+    const drift = candidate.drift;
+    const copilot = candidate.copilot;
     // Under ten seconds you keep working; past half a minute you have gone to make coffee.
-    const feel = !wait
-      ? ""
-      : wait < 10
-      ? "answers while you watch"
-      : wait < 25
-      ? "a pause, then it goes"
-      : "you will look away";
+    const feel = !wait ? "" : wait < 10 ? "while you watch" : wait < 30 ? "a pause" : "you look away";
+    const marks = [
+      candidate.available === false ? candidate.unavailable_reason : "",
+      candidate.deprecated ? "retired by its vendor" : "",
+    ].filter(Boolean);
     body.append(
-      tag(`<tr>
-        <td data-sort="${escapeHtml(candidate.label)}">${escapeHtml(candidate.label)}${roleChips(candidate.key, candidate.effort)}${
-          candidate.available === false
-            ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(candidate.unavailable_reason)}</span>`
+      tag(`<tr class="${candidate.available === false ? "off" : ""}">
+        <td data-sort="${escapeHtml(candidate.label)}">${escapeHtml(candidate.label)}${roleChips(
+          candidate.key,
+          candidate.effort
+        )}${
+          marks.length
+            ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(marks.join(" · "))}</span>`
             : ""
         }</td>
-        <td class="num" data-sort="${wait ?? ""}">${wait ? `${wait}s` : "—"}</td>
-        <td data-nosort>${
-          wait
-            ? `${bar(wait / worst, "violet-fill")}<span class="dim" style="font-size:.78rem;margin-left:.5rem">${feel}</span>`
-            : '<span class="dim" style="font-size:.78rem">not measured</span>'
+        <td class="num" data-sort="${candidate.score ?? ""}">${idx(candidate.score)}</td>
+        <td class="num dim" data-sort="${candidate.terminal_bench ?? ""}">${
+          candidate.terminal_bench === null || candidate.terminal_bench === undefined
+            ? "—"
+            : `${candidate.terminal_bench.toFixed(0)}%`
         }</td>
-        <td class="num" data-sort="${speed.end_to_end_seconds ?? ""}">${
-          speed.end_to_end_seconds ? `${speed.end_to_end_seconds}s` : "—"
+        <td class="num" data-sort="${cr ?? ""}">${
+          cr === null ? '<span class="dim" title="Artificial Analysis has not priced it yet">not priced</span>' : credits(cr)
+        }</td>
+        <td class="num" data-sort="${wait ?? ""}">${secs(wait)}</td>
+        <td class="wait-cell" data-nosort>${
+          wait
+            ? `${bar(clockX(wait), "violet-fill")}<span class="dim feel">${feel}</span>`
+            : '<span class="dim feel">not timed</span>'
         }</td>
         <td class="num" data-sort="${speed.tokens_per_second ?? ""}">${
           speed.tokens_per_second ? Math.round(speed.tokens_per_second) : "—"
         }</td>
-        <td class="num" data-sort="${candidate.score}">${pct(candidate.score)}</td>
-        <td class="num" data-sort="${candidate.cost_usd ?? ""}">${
-          candidate.cost_usd ? credits(candidate.cost_usd / (view.credit_usd || 0.01)) : "—"
+        <td class="num" data-sort="${drift && drift.score !== null ? drift.score : ""}">${
+          drift && drift.score !== null ? Math.round(drift.score) : "—"
+        }</td>
+        <td class="num" data-sort="${copilot ? copilot.output_usd : ""}">${
+          copilot ? `$${copilot.input_usd} / $${copilot.output_usd}` : "—"
         }</td>
       </tr>`)
     );
   });
 
-  const note = $("#feel-note");
-  if (note) {
-    const waited = rows.filter((c) => c.speed.first_answer_seconds).length;
-    const offBoard = rows.filter((c) => c.available === false).length;
-    note.textContent =
-      `${rows.length} variants carry a measurement from Artificial Analysis, taken on their own ` +
-      `hardware; ${waited} of them a waiting time, the rest only a typing speed. ${offBoard} are ` +
-      `off our board and kept here for comparison. A variant missing from this table is not slow — ` +
-      `nobody has timed it. Waiting time is per effort and never carried across efforts; typing ` +
-      `speed belongs to the model, so it is.`;
+  // Sold by GitHub, but nobody has scored it at a named effort: its price is a fact, its
+  // quality is not known. Only shown while no wait filter is on — it has no wait to filter.
+  if (state.waitFilter === null) {
+    (view.copilot_only || []).forEach((model) => {
+      body.append(
+        tag(`<tr class="off">
+          <td data-sort="${escapeHtml(model.label)}">${escapeHtml(model.label)}
+            <span class="dim" style="font-size:.75rem"> · not scored at a named effort</span></td>
+          <td class="num" data-sort="">—</td><td class="num" data-sort="">—</td>
+          <td class="num" data-sort="">—</td><td class="num" data-sort="">—</td><td></td>
+          <td class="num" data-sort="">—</td>
+          <td class="num" data-sort="${model.drift ?? ""}">${model.drift ? Math.round(model.drift) : "—"}</td>
+          <td class="num" data-sort="${model.output_usd ?? ""}">$${model.input_usd} / $${model.output_usd}</td>
+        </tr>`)
+      );
+    });
   }
-  makeSortable("feel", { index: 1, dir: 1 });
-}
 
-/* ---------- copilot pricing ---------- */
-
-function renderCopilot(view) {
-  const body = $("#copilot tbody");
-  body.innerHTML = "";
-  const best = new Map();
-  // Everything GitHub sells us belongs in this table, including the models the organisation
-  // has switched off — their price is a fact, and their absence from the verdict is a choice
-  // worth showing next to it.
-  [...view.candidates, ...(view.excluded || [])].forEach((candidate) => {
-    if (!candidate.copilot) return;
-    const current = best.get(candidate.key);
-    if (!current || candidate.score > current.score) best.set(candidate.key, candidate);
-  });
-
-  const rows = [];
-  const rate = view.credit_usd || 0.01;
-  best.forEach((candidate) => {
-    rows.push({
-      key: candidate.key,
-      label: candidate.label.split(" · ")[0],
-      category: candidate.copilot.category,
-      input: candidate.copilot.input_usd,
-      cached: candidate.copilot.cached_input_usd,
-      output: candidate.copilot.output_usd,
-      score: candidate.score,
-      effort: candidate.effort_label,
-      // What a task on this model actually costs out of the tier — the per-million rates
-      // beside it are a rate, not a bill.
-      taskCredits: candidate.cost_usd ? Math.round(candidate.cost_usd / rate) : null,
-      speed: candidate.speed ? candidate.speed.tokens_per_second : null,
-      wait: candidate.speed ? candidate.speed.first_answer_seconds : null,
-      note: candidate.available === false ? candidate.unavailable_reason : null,
-    });
-  });
-  view.copilot_only.forEach((model) => {
-    rows.push({
-      key: model.key,
-      label: model.label,
-      category: model.category,
-      input: model.input_usd,
-      cached: model.cached_input_usd,
-      output: model.output_usd,
-      score: null,
-      effort: null,
-      taskCredits: null,
-      speed: null,
-      wait: null,
-    });
-  });
-  rows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (a.input ?? 0) - (b.input ?? 0));
-
-  rows.forEach((row) => {
-    body.append(
-      tag(`<tr>
-        <td data-sort="${escapeHtml(row.label)}">${escapeHtml(row.label)}${roleChips(row.key)}${
-          row.note ? `<span class="dim" style="font-size:.75rem"> · ${escapeHtml(row.note)}</span>` : ""
-        }</td>
-        <td class="dim" data-sort="${CATEGORY_RANK[(row.category || "").toLowerCase()] ?? ""}">${escapeHtml(row.category || "—")}</td>
-        <td class="num" data-sort="${row.input ?? ""}">${usd(row.input)}</td>
-        <td class="num dim" data-sort="${row.cached ?? ""}">${usd(row.cached)}</td>
-        <td class="num" data-sort="${row.output ?? ""}">${usd(row.output)}</td>
-        <td class="num" data-sort="${row.taskCredits ?? ""}">${
-          row.taskCredits === null ? "—" : credits(row.taskCredits)
-        }</td>
-        <td class="num" data-sort="${row.speed ?? ""}">${
-          row.speed === null ? "—" : Math.round(row.speed)
-        }</td>
-        <td class="num" data-sort="${row.wait ?? ""}">${
-          row.wait === null || row.wait === undefined ? "—" : `${row.wait}s`
-        }</td>
-        <td class="num" data-sort="${row.score ?? ""}">${row.score === null ? '<span class="dim">not benchmarked</span>' : `${pct(row.score)} <span class="dim" style="font-size:.72rem">${escapeHtml(row.effort)}</span>`}</td>
-      </tr>`)
-    );
-  });
-  makeSortable("copilot", { index: 8, dir: -1 });
+  const note = $("#models-note");
+  if (note) {
+    const timed = rows.filter((c) => budgetWait(c) !== null).length;
+    note.textContent =
+      `${rows.length} variants${state.waitFilter === null ? "" : ` answer within ${state.waitFilter} s`}; ` +
+      `${timed} of them with a measured wait. Every number comes from Artificial Analysis, run on their ` +
+      `own hardware, except drift (AI Stupid Level, at each provider's default effort) and the ` +
+      `Copilot price. A variant with no wait is not slow — nobody has timed it. Waiting time is per ` +
+      `effort and never carried across efforts; typing speed belongs to the model, so a variant ` +
+      `that was not timed shows its family's. Coding is Terminal-Bench 4.0, shown for comparison ` +
+      `and never used to decide.`;
+  }
+  makeSortable("models", { index: 1, dir: -1 });
 }
 
 /* ---------- footer ---------- */
@@ -1249,25 +1466,36 @@ function renderCopilot(view) {
 function renderMethod(view) {
   const method = $("#method");
   const thresholds = view.thresholds;
+  const assumptions = view.assumptions;
   const disabled = (view.disabled_by_config || []).join(", ");
+  const levels = (view.patience || [])
+    .map((p) =>
+      p.scout === null && p.worker === null
+        ? `${p.label} (no limit)`
+        : `${p.label} (scout ${ceilingText(p.scout)}, worker ${ceilingText(p.worker)})`
+    )
+    .join(", ");
   method.innerHTML = `
-    <div>Cost, score, tokens and steps come from CursorBench ${escapeHtml(view.benchmark_version || "")} —
-      always for the effort level named on the card. Drift comes from AI Stupid Level and acts as a
-      veto rather than another number in an average: a model on the way down loses to a comparable
-      model that is holding steady.</div>
+    <div>Quality, cost and time come from Artificial Analysis — Intelligence Index
+      v${escapeHtml(view.benchmark_version || "?")}, the cost of one index task, and the wait to the
+      first answer token — always for the effort level named on the card, and all from the same runs.
+      Drift comes from AI Stupid Level and acts as a veto rather than another number in an average: a
+      model on the way down loses to a comparable model that is holding steady.</div>
     <div>Roles are filled inside the selected tier's monthly credit budget, split
-      ${Math.round(view.assumptions.budget_shares.architect * 100)}/${Math.round(view.assumptions.budget_shares.worker * 100)}/${Math.round(view.assumptions.budget_shares.scout * 100)}:
+      ${Math.round(assumptions.budget_shares.architect * 100)}/${Math.round(assumptions.budget_shares.worker * 100)}/${Math.round(assumptions.budget_shares.scout * 100)}:
       the architect takes the best model its share affords, the worker climbs the value ladder while
-      a point costs at most $${thresholds.steep_usd_per_pp.toFixed(2)}, the scout takes bargains only
-      (at most $${thresholds.bargain_usd_per_pp.toFixed(2)} per point).</div>
-    <div>The merit-only shortlist quoted for comparison ignores the budget entirely: architect
-      ≤ ${thresholds.architect_score_slack_pp} pp below the top score (cheapest of that group),
-      worker ≤ $${thresholds.worker_max_cost_usd.toFixed(2)} per task, scout ≤ $${thresholds.scout_max_cost_usd.toFixed(2)} per task.</div>
+      a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}, the scout takes bargains only
+      (at most $${thresholds.bargain_usd_per_pp.toFixed(2)} a point). Then the unused credits are spent,
+      architect first, up to ${Math.round(assumptions.target_utilisation * 100)}% of the tier. A lower
+      role never costs more per task, or scores more, than the role above it.</div>
+    <div>Patience sets the longest wait before the first answer the loop roles may put you through:
+      ${escapeHtml(levels)}. The architect is never on this clock. A variant that was not timed is not
+      treated as slow.</div>
     <div>The board is limited to models we can actually start: a model has to appear on GitHub's
       Copilot pricing page, and not be one this organisation has switched off
-      (${escapeHtml(disabled || "none")}). Anything else — a benchmark-only model, or one we do not
-      have — is collected and archived, but never recommended. The switch above the verdict opens
-      the full board so the cost of that restriction stays visible.</div>
+      (${escapeHtml(disabled || "none")}). A model Artificial Analysis has scored but not yet priced is
+      shown but never planned. Anything else is collected and archived, but never recommended — the
+      switch above the verdict opens the full board so the cost of that restriction stays visible.</div>
     <div>Credits: 1 AI credit = $${view.credit_usd.toFixed(2)}, ${
       view.credit_usd_verified ? "read today from" : "assumed — not readable today in"
     } GitHub's pricing page${
@@ -1283,45 +1511,52 @@ function renderMethod(view) {
 
 /* ---------- boot ---------- */
 
-function renderAll() {
+function renderAll({ animate = false } = {}) {
   const view = state.view;
   if (!view) return;
   renderTabs();
   const current = plan();
   renderTierTabs(view);
+  renderPatienceTabs(view);
   renderFreshness(view.sources);
-  renderVerdicts(view);
-  renderBudget(view);
-  renderGaps((current && current.gaps) || view.gaps);
+  renderVerdicts(view, animate);
+  renderBudget(view, animate);
+  renderGaps((current && current.gaps) || []);
   renderTasks(view);
+  hideTip();
   renderScatter(view);
   renderFamilyPicker(view);
   renderLadder(view);
   /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
   renderChartDetail();
   renderDrift(view.drift, view.drift_history, view.sources && view.sources.stupidlevel);
-  renderFeel(view);
-  renderCopilot(view);
+  renderWaitFilter();
+  renderModels(view);
   renderMethod(view);
   showPanel(state.panel || storedPanel() || PANELS[0].id);
 }
 
-async function load() {
+async function load({ animate = false } = {}) {
   const response = await fetch(`/api/view${state.showAll ? "?all=1" : ""}`, { cache: "no-store" });
   const view = await response.json();
   state.view = view;
 
-  const remembered = storedTier();
-  if (!view.plans || !view.plans[state.tier]) {
-    state.tier =
-      remembered && view.plans && view.plans[remembered] ? remembered : view.default_tier;
+  const plans = view.plans || {};
+  if (!plans[state.tier]) {
+    const remembered = stored(TIER_STORAGE_KEY);
+    state.tier = remembered && plans[remembered] ? remembered : view.default_tier;
+  }
+  const levels = (view.patience || []).map((p) => p.id);
+  if (!levels.includes(state.patience)) {
+    const remembered = stored(PATIENCE_STORAGE_KEY);
+    state.patience = levels.includes(remembered) ? remembered : view.default_patience;
   }
 
   if (!view.ready) {
     $("#verdict-sub").textContent =
       "Collecting from the sources — this page reloads itself every 5 minutes.";
   }
-  renderAll();
+  renderAll({ animate: animate && !reducedMotion() });
 }
 
 $("#toggle-all").addEventListener("click", (event) => {
@@ -1342,10 +1577,30 @@ $("#toggle-ladder").addEventListener("click", (event) => {
   renderLadder(state.view);
 });
 
-$("#scatter").addEventListener("click", (event) => {
+const scatter = $("#scatter");
+scatter.addEventListener("click", (event) => {
   const hit = event.target.closest("[data-id]");
   if (hit) toggleVariant(hit.getAttribute("data-id"));
 });
+scatter.addEventListener("keydown", (event) => {
+  const hit = event.target.closest("[data-id]");
+  if (hit && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    toggleVariant(hit.getAttribute("data-id"));
+  }
+});
+scatter.addEventListener("pointerover", (event) => {
+  const hit = event.target.closest("circle.hit");
+  if (hit) showTip(hit);
+});
+scatter.addEventListener("focusin", (event) => {
+  const hit = event.target.closest("circle.hit");
+  if (hit) showTip(hit);
+});
+scatter.addEventListener("pointerleave", hideTip);
+scatter.addEventListener("focusout", hideTip);
 
-load();
+// The one orchestrated moment is the first paint: the three waits run against each other.
+// The five-minute refresh redraws quietly.
+load({ animate: true });
 setInterval(load, 5 * 60 * 1000);

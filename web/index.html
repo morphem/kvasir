@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kvasir — which agent to start</title>
-<meta name="description" content="Which AI agent to start for a task, against your GitHub Copilot AI-credit tier: cost per task (CursorBench), quality drift (AI Stupid Level) and Copilot pricing in one place.">
+<meta name="description" content="Which AI agent to start for a task, against your GitHub Copilot AI-credit tier: quality, cost and waiting time per effort (Artificial Analysis), quality drift (AI Stupid Level) and Copilot pricing in one place.">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
 <link rel="stylesheet" href="/style.css">
@@ -23,11 +23,13 @@
           <i>This page mixes three sources and answers one question. Same idea, fewer casualties.</i>
         </span>
       </span></h1>
-      <p class="tagline">Which agent to start, from four live sources.</p>
+      <p class="tagline">Which agent to start, from three live sources.</p>
     </div>
     <div class="topbar-right">
       <div class="eyebrow">Organisation AI credits tier</div>
       <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
+      <div class="eyebrow" style="margin-top:.9rem">How long you will wait</div>
+      <div class="tier-tabs" id="patience-tabs" role="tablist" aria-label="Patience"></div>
       <p id="tier-note"></p>
     </div>
   </header>
@@ -46,6 +48,7 @@
       </div>
     </div>
     <p class="note" id="benchmark-note" hidden></p>
+    <p class="note" id="pricing-note" hidden></p>
     <div class="verdicts" id="verdicts"></div>
   </section>
 
@@ -89,7 +92,7 @@
       <table id="tasks">
         <thead><tr>
           <th>Task</th><th>Role</th><th>Start with</th>
-          <th class="num">Score</th><th class="num">$ / task</th>
+          <th class="num">Intelligence</th><th class="num">You wait</th><th class="num">Credits / task</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -102,9 +105,9 @@
         <div class="eyebrow">Cost vs quality</div>
         <h2>Where the value sits</h2>
         <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-          Every dot is a model at one effort level: average cost per task across (log scale), CursorBench
-          score up. The line joins the models nothing else beats on price and score at the same time.
-          Click any dot or rung to see that variant up close — and every effort level it comes in.
+          Every dot is a model at one effort level: what one Intelligence Index task costs across (log
+          scale), the index score up. The line joins the models nothing else beats on price and score
+          at the same time. Hover a dot to read it; click it to see every effort level it comes in.
         </p>
       </div>
       <div class="controls">
@@ -113,7 +116,10 @@
     </div>
     <div class="chart-box">
       <div class="family-picker" id="family-picker"></div>
-      <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Cost against score"></svg>
+      <div class="scatter-wrap">
+        <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Cost against score"></svg>
+        <div class="tip" id="scatter-tip" hidden></div>
+      </div>
       <div class="legend">
         <span><i style="background:#7c5cff"></i> Architect</span>
         <span><i style="background:#38e1c4"></i> Worker</span>
@@ -121,6 +127,7 @@
         <span><i style="background:#3a4257"></i> everything else — click any dot</span>
       </div>
     </div>
+    <p class="note" id="unpriced-note" hidden></p>
     <div class="chart-detail" id="chart-detail" hidden></div>
     <div class="ladder" id="ladder"></div>
   </section>
@@ -151,53 +158,37 @@
     </div>
   </section>
 
-  <section data-panel="timing">
-    <div class="eyebrow">Artificial Analysis</div>
-    <h2>What it feels like to work with</h2>
-    <p class="dim" style="margin:.5rem 0 0;max-width:74ch">
-      The same model is a different tool at a different effort: Opus 5 answers in under four
-      seconds at medium and takes fifty at max. Scores and prices never say that, and it is the
-      thing you actually live with. Sorted by how long you sit there before the first word.
-    </p>
+  <section data-panel="models">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Every model we can start</div>
+        <h2>Score, price and the wait, per effort</h2>
+        <p class="dim" style="margin:.5rem 0 0;max-width:74ch">
+          The same model is a different tool at a different effort: Opus 5.5 starts answering in
+          13 seconds at high and takes nearly three minutes at extra high. Scores and prices never
+          say that, and it is the thing you actually live with. Filter by the wait you will accept,
+          or sort any column.
+        </p>
+      </div>
+      <div class="controls" id="wait-filter" role="group" aria-label="Longest wait"></div>
+    </div>
     <div class="table-scroll">
-      <table id="feel">
+      <table id="models">
         <thead><tr>
           <th>Model · effort</th>
+          <th class="num" title="Artificial Analysis Intelligence Index">Intelligence</th>
+          <th class="num" title="Terminal-Bench 4.0, agentic coding in a terminal — shown for comparison, never used to decide">Coding</th>
+          <th class="num" title="AI credits for one Intelligence Index task">Credits / task</th>
           <th class="num" title="Seconds to the first answer token, thinking time included">You wait</th>
-          <th data-nosort>How that sits</th>
-          <th class="num" title="Seconds to produce 500 tokens, thinking included">One answer</th>
+          <th data-nosort></th>
           <th class="num" title="Output tokens per second">Types</th>
-          <th class="num">CursorBench</th>
-          <th class="num">Credits / task</th>
+          <th class="num" title="AI Stupid Level score, measured at the provider's default effort">Drift</th>
+          <th class="num" title="Copilot price per million input / output tokens">Copilot $ / 1M</th>
         </tr></thead>
         <tbody></tbody>
       </table>
     </div>
-    <p class="dim" id="feel-note" style="margin:1rem 0 0;font-size:.85rem"></p>
-  </section>
-
-  <section data-panel="copilot">
-    <div class="eyebrow">GitHub Copilot</div>
-    <h2>What our Copilot enables, and what it costs</h2>
-    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Prices per million tokens from GitHub's documentation — this is the part that comes out of the
-      AI-credit budget. Models without a CursorBench score are not benchmarked end to end: their
-      price is known, their quality is not. The clock comes from Artificial Analysis: how fast it
-      types, and how long you wait before it starts.
-    </p>
-    <div class="table-scroll">
-      <table id="copilot">
-        <thead><tr>
-          <th>Model</th><th>Category</th><th class="num">Input / 1M</th>
-          <th class="num">Cached / 1M</th><th class="num">Output / 1M</th>
-          <th class="num" title="Credits for one CursorBench task at the effort shown on the right">Credits / task</th>
-          <th class="num" title="Output tokens per second, measured by Artificial Analysis">Tok / s</th>
-          <th class="num" title="Seconds to the first answer token, thinking time included — measured at the effort shown">Wait</th>
-          <th class="num">CursorBench</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
+    <p class="dim" id="models-note" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
   <section data-panel="method">

@@ -529,3 +529,84 @@ footer a:hover { color: var(--text); }
   .topbar-right { text-align: left; }
   .topbar-right .tier-tabs { justify-content: flex-start; }
 }
+
+/* ---- the clock ----
+   The wait to the first answer, on one square-root scale shared by every card, with the
+   patience ceilings as ticks. On load and on a switch the three bars fill at once, each over
+   a time proportional to its real wait: the role that answers first lands first. That is the
+   page's one piece of choreography; nothing else moves on its own. */
+.clock { margin: 0.2rem 0 0.1rem; }
+.clock-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.clock-head b {
+  font-family: var(--mono); font-size: 1.55rem; font-weight: 500; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.clock-head span { font-size: 0.8rem; color: var(--dim); }
+.clock.untimed .clock-head b { font-size: 1rem; color: var(--dim); font-weight: 400; }
+.clock-track {
+  position: relative; height: 6px; margin: 0.55rem 0 1.25rem;
+  border-radius: 999px; background: rgba(139, 151, 168, 0.16);
+}
+.clock.untimed .clock-track { background: repeating-linear-gradient(90deg, rgba(139, 151, 168, 0.22) 0 6px, transparent 6px 11px); }
+.clock-bar {
+  position: absolute; inset: 0 auto 0 0; width: var(--to); border-radius: 999px;
+  background: var(--cyan);
+}
+.clock-bar.free { background: var(--dim); }
+.clock-bar.run { animation: clock-run var(--dur) cubic-bezier(0.3, 0.1, 0.25, 1) both; }
+@keyframes clock-run { from { width: 0; } to { width: var(--to); } }
+.tick {
+  position: absolute; top: -3px; width: 1px; height: 12px; background: var(--edge);
+}
+.tick em {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  font-family: var(--mono); font-style: normal; font-size: 0.58rem; color: var(--dim);
+  opacity: 0.7; white-space: nowrap;
+}
+.tick.limit { background: var(--text); }
+.tick.limit em { color: var(--text); opacity: 1; }
+
+/* ---- scatter hover ---- */
+.scatter-wrap { position: relative; }
+.tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  transform: translate(14px, -50%);
+  display: flex; flex-direction: column; gap: 0.12rem;
+  min-width: 13rem; max-width: 18rem;
+  background: var(--raise); border: 1px solid var(--edge); border-left: 2px solid var(--cyan);
+  border-radius: 10px; padding: 0.55rem 0.75rem;
+  font-size: 0.8rem; color: var(--dim);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+}
+.tip.flip { transform: translate(calc(-100% - 14px), -50%); }
+.tip b { color: var(--text); font-size: 0.9rem; }
+#scatter circle.hit:focus { outline: none; }
+#scatter circle.hit:focus-visible { stroke: var(--cyan); stroke-width: 2; }
+
+/* ---- all models ---- */
+#models tr.off td { color: var(--dim); }
+td .feel { font-size: 0.76rem; margin-left: 0.5rem; white-space: nowrap; }
+#wait-filter { align-self: flex-end; }
+
+/* A switch re-answers the page as one cross-fade; kept short so it reads as a change of
+   state, not as an effect. */
+::view-transition-old(root),
+::view-transition-new(root) { animation-duration: 0.22s; }
+::view-transition-group(*) { animation-duration: 0.28s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .clock-bar.run { animation: none; }
+  .budget-bar span { transition: none; }
+  .gloss-card { transition: none; }
+}
+.clock-head b small { font-size: 0.62em; margin-left: 0.12em; color: var(--dim); }
+.why.aside { font-size: 0.8rem; font-style: italic; }
+td.wait-cell { white-space: nowrap; }
+/* Two panels share the value tab; without this the second one sat flush on the first. */
+section[data-panel="value"] ~ section[data-panel="value"] { margin-top: 3rem; }
+@media (max-width: 700px) {
+  /* Three options each: a row of three reads as one switch, a stack of three as a menu. */
+  .topbar-right .tier-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .topbar-right .tier-tab { padding: 0.42rem 0.5rem; }
+  .topbar-right .tier-tab span { display: block; white-space: normal; }
+}
