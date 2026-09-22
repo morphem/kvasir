@@ -424,7 +424,6 @@ def plan_for_tier(
         per_task = share_credits / billable_tasks if billable_tasks else 0.0
         ceiling = patience.get(role)
 
-        speed_blocked = None
         if role == "architect":
             pick = _best_affordable(candidates, per_task, credit_usd)
             pool = [c for c in candidates if _fits(c, per_task, credit_usd)]
@@ -435,20 +434,6 @@ def plan_for_tier(
             pick = _walk_ladder(quick, per_task, credit_usd, per_point)
             pool = [c for c in quick if _fits(c, per_task, credit_usd)]
             surplus_pool = quick
-            # What the patience setting cost this role, so the card can say it, not just differ.
-            ignored = [
-                c
-                for c in rungs
-                if not quick_enough(c, ceiling) and _fits(c, per_task, credit_usd)
-                and (pick is None or c["score"] > pick["score"])
-            ]
-            if ignored:
-                best_ignored = max(ignored, key=lambda c: c["score"])
-                speed_blocked = {
-                    "label": best_ignored["label"],
-                    "score": best_ignored["score"],
-                    "wait_seconds": wait_of(best_ignored),
-                }
         if pick is not None:
             # The budget decides what is affordable; drift still decides what is sane.
             pick, drift_replaced = _avoid_drift(pick, pool, drift_trusted)
@@ -461,7 +446,6 @@ def plan_for_tier(
             "surplus_pool": surplus_pool,
             "full_pool": candidates if role == "architect" else rungs,
             "ceiling": ceiling,
-            "speed_blocked": speed_blocked,
             "share_credits": share_credits,
             "billable_tasks": billable_tasks,
             "per_task": per_task,
@@ -471,6 +455,31 @@ def plan_for_tier(
     upgrades = _spend_the_tier(state, tier["credits"], credit_usd, drift_trusted)
     stopped_because = state.pop("_stopped", None)
     upgraded_roles = {step["role"]: step["from"] for step in upgrades}
+
+    # What patience cost each loop role, so the card can say it rather than just differ: the
+    # best model the role could otherwise have taken — affordable, and still below the role
+    # above it — that makes you wait too long. Asked after the surplus walk, because before it
+    # the answer names models the role-order rule would have refused anyway.
+    for role in ("worker", "scout"):
+        slot = state[role]
+        slot["speed_blocked"] = None
+        pick = slot["pick"]
+        ignored = [
+            c
+            for c in rungs
+            if not quick_enough(c, slot["ceiling"])
+            and _fits(c, slot["per_task"], credit_usd)
+            and (pick is None or c["score"] > pick["score"])
+            and _keeps_roles_apart(state, role, c)
+        ]
+        if ignored:
+            best = max(ignored, key=lambda c: c["score"])
+            slot["speed_blocked"] = {
+                "label": best["label"],
+                "score": best["score"],
+                "wait_seconds": wait_of(best),
+            }
+    state["architect"]["speed_blocked"] = None
 
     for role in ("architect", "worker", "scout"):
         slot = state[role]

@@ -1,11 +1,12 @@
 # CLAUDE.md — working agreement for Kvasir
 
 **Kvasir** is one page that answers a single question: *which agent do I start for this task,
-today.* It merges four sources — **CursorBench** (cost, tokens and steps per task, always per
-effort level), **AI Stupid Level** (drift: is this model quietly getting worse), **GitHub
-Copilot's models-and-pricing docs** (what we can actually pick at work, and what it bills) and
-**Artificial Analysis** (output tokens per second — the only source that measures time) — into
-three roles: architect, worker, scout. Python + FastAPI + SQLite in a single container on Unraid,
+today.* It merges three sources — **Artificial Analysis** (Intelligence Index, cost per task and
+the wait to the first answer, always per effort level, all from the same runs), **AI Stupid Level**
+(drift: is this model quietly getting worse) and **GitHub Copilot's models-and-pricing docs** (what
+we can actually pick at work, and what it bills) — into three roles: architect, worker, scout,
+filled per AI-credit tier and per patience setting. CursorBench scored the board until
+2026-09-22; its archive stays readable. Python + FastAPI + SQLite in a single container on Unraid,
 served at `kvasir.blinkneuron.eu`. State is a SQLite archive under `/data`; there is no other
 persistence and no external database. **Everything shipped is English — code, comments, docs,
 commits and the page itself.** This is a deliberate, owner-approved exception to the ecosystem
@@ -29,7 +30,8 @@ Infra conventions (Unraid, appdata layout, SWAG, deploy doctrine) are owned by
 shown as data.** A benchmark score without its effort setting is not comparable to anything, and a
 parser that returns 3 of 56 rows because a page changed shape would quietly turn this page into
 confident nonsense. Both halves are pinned by tests: `test_every_tier_gets_a_pick_with_an_effort`
-and `test_cursorbench_refuses_a_half_read_page` (plus the `MIN_ROWS` guard in every collector).
+and `test_artificialanalysis_refuses_a_half_read_page` (plus the `MIN_ROWS` guard in every
+collector, and `MIN_PRICED` in the Artificial Analysis one).
 When a source breaks, the run log records the failure, the page keeps showing the last good
 reading with its real age, and the freshness chip goes amber. Never "fix" a parser by relaxing
 `MIN_ROWS`.
@@ -37,18 +39,25 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
 ## Domain notes that bite
 
 - **Money is integer micro-dollars** (`*_uusd`), never floats — same reason the ecosystem keeps PLN
-  in grosze. Prices are per 1M tokens (Copilot) or per benchmark task (CursorBench); both get
+  in grosze. Prices are per 1M tokens (Copilot) or per index task (Artificial Analysis); both get
   summed and diffed across months of snapshots. Convert at the edge, in `_usd()`.
-- **The three sources spell every model differently** — `Opus 5 Extra High` / `claude-opus-5` /
-  `Claude Opus 5`. `naming.py` folds all of them into one key plus a separate effort, by rule, not
+- **The three sources spell every model differently** — `Claude Opus 5 (Adaptive Reasoning, Max
+  Effort)` / `claude-opus-5` / `Claude Opus 5`, and older AA names put the version first (`Claude
+  4.5 Haiku`). `naming.py` folds all of them into one key plus a separate effort, by rule, not
   by lookup table. A new model must land correctly without a code change; add to `ALIASES` only
   what the rules genuinely cannot reach.
-- **CursorBench's leaderboard has no markup to hang on.** Rows arrive as one run-together string
-  (`9Opus 5 High66.7%$3.9127,93248`). The score regex is bounded to `0.0-100.0` on purpose:
-  model names end in digits too, and an unbounded number reads "Composer 2." + "556.1%" out of the
-  same line. That exact case is a test.
+- **Artificial Analysis is read from its RSC payload, not its JSON-LD.** The schema.org blocks
+  carry only the top twenty of each chart; the `self.__next_f.push` stream on any model page
+  carries all ~665 variants as plain JSON objects. That stream is their implementation detail, not
+  an API — hence `MIN_ROWS`/`MIN_PRICED`. Their `/data/*.txt` chart file is encrypted: leave it
+  alone. Read the record's `release.name` for the model and `effort.slug` for the effort; a
+  non-reasoning mode gets no effort and never reaches the board.
+- **A release is timed before it is priced.** GPT-6 Luna and Sol arrived scored and timed but with
+  no cost per task. `cost_uusd` stays `None`, the candidate is `priced: false`, and it is shown but
+  never planned. Never estimate the price from token counts — the cache-hit share alone moves it 3×.
 - **AI Stupid Level publishes no effort per score.** Those runs use each provider's default, so the
-  UI says so rather than implying the numbers are comparable to CursorBench's per-effort rows. Its
+  UI says so rather than implying the numbers are comparable to Artificial Analysis's per-effort
+  rows. Its
   dashboard score and its per-run history are *different measurements* — they are stored in
   separate series (`aisl-dashboard`, `aisl-run`) and must not be plotted as one line.
 - **Deduplication is by content hash.** Polling hourly writes a snapshot only when something moved,
@@ -82,24 +91,32 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   was gone by the 12th, with the file still on disk. The volume is the only thing every path
   keeps. The file must be readable by 99:100 — the container is not root.
 - **A benchmark can re-baseline under you.** CursorBench 4.0 (2026-09-10) replaced 3.2, dropped the
-  top score 19 points and re-ran a third of the models. `db.benchmark_versions()` keeps that
+  top score 19 points and re-ran a third of the models; the Intelligence Index is versioned the
+  same way (v4.3 in September 2026), and switching sources on 2026-09-22 changed the unit again. `db.benchmark_versions()` keeps that
   timeline, `/api/history` tags every reading with the version that produced it, and the page says
   so for six weeks after a change. Never compare scores across versions, and never explain a
   shrunken board as a bug before checking the version.
 - **Two clocks, joined differently.** Output speed is a property of the model and its hardware, so
-  it carries across efforts; latency is not, because reasoning effort *is* the waiting (Opus 5:
-  49.7 s to first answer at max, 3.8 s at medium). `_speed_block()` keeps them apart on purpose.
-  A zero in a stacked latency bar means absent, never instant.
-- **Speed is a floor for the loop roles, never a score.** The worker and the scout are waited on
-  all day, so a model measured below `SPEED_FLOOR_TPS` cannot hold one; the architect is exempt,
-  because planning is waited on once and deliberately. A model Artificial Analysis has not timed
-  passes the floor — the same rule as the drift veto, for the same reason: absence of evidence
-  decides nothing. Coverage is partial (Sol, Terra and Sonnet 5 had no measurement in September),
-  so never build a rule that reads "no number" as "slow".
+  a variant that was not timed borrows its family's, labelled with the effort it came from; the
+  wait is not, because reasoning effort *is* the waiting (Opus 5.5: 13 s to first answer at high,
+  170 s at xhigh). `_speed_block()` keeps them apart on purpose. A zero wait means absent, never
+  instant.
+- **Patience is a ceiling for the loop roles, never a score.** The worker and the scout are waited
+  on all day, so a variant whose own wait to the first answer passes the selected ceiling
+  (`budget.PATIENCE`: Fast 30/10 s, Balanced 90/30 s, Any) cannot hold one; the architect is
+  exempt, because planning is waited on once and deliberately. It replaced an 80 tok/s floor that,
+  once the source timed everything, barred Sonnet 5, Terra and Sol while saying nothing about a
+  two-minute silence. A variant nobody has timed passes — the same rule as the drift veto, for the
+  same reason: absence of evidence decides nothing. Never build a rule that reads "no number" as
+  "slow". The loop roles climb a frontier *rebuilt* from the quick variants, not the full frontier
+  filtered — a slow rung can hide the quick variant it dominated.
 - **An allowance is spent, not hoarded — but never silently.** Unused credits pool back to the
   billing entity, so the plan buys up to `TARGET_UTILISATION` and stops at `MAX_UTILISATION`.
-  Surplus goes in role order (architect first), and a role may not climb onto another role's
-  model. When the plan stops short it records `stopped_because`: an unspent tier is either a
+  Surplus goes in role order (architect first); a role may not climb onto another role's exact
+  variant, and a lower role may not score more *or cost more per task* than the role above it (at
+  Heavy/Fast the quick frontier once put Opus 5 · Medium on the scout at 219 credits under a 182-credit
+  worker). One model at three efforts is allowed — on the September data Opus 5.5 leads at every
+  price from $0.55 up, and effort is the dial between the roles. When the plan stops short it records `stopped_because`: an unspent tier is either a
   finding or a fault, and the difference is the reason printed next to it.
 - **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
   the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
@@ -135,7 +152,8 @@ docker build -t kvasir . && docker run -p 8688:8688 -v $PWD/data:/data kvasir
 | `kvasir/naming.py` | Canonical model keys and the effort ladder. The join between the three sources lives here. |
 | `kvasir/db.py` | The archive: snapshots, observations, run log, drift series. Content-hash dedup. |
 | `kvasir/collect.py` · `scheduler.py` | Poll, archive, log; one loop that asks each source "are you due?" from the database, so a restart never loses the schedule. |
-| `kvasir/recommend.py` | The verdict: tiers, the cost/quality frontier, the gaps between roles, the drift veto. Every threshold is echoed into the API response. |
-| `kvasir/catalog.py` | The task list and the three roles — Polish UI copy, English keys. |
+| `kvasir/recommend.py` | The board: joins the three sources, availability, the value ladder, the gaps between roles, the drift-freshness check, and the archived decision. |
+| `kvasir/budget.py` | The roles: one plan per tier × patience — shares, ladder walks, drift veto, patience, surplus walk, stop reasons. Every constant is echoed into the API response. |
+| `kvasir/catalog.py` | The task list and the three roles — English copy, see the language note above. |
 | `kvasir/api.py` | One payload (`/api/view`) for the whole page, plus `/api/history` and `/api/drift` over the archive. |
 | `web/` | The page: `index.html` skeleton, `app.js` rendering, `style.css` in BlinkNeuron colours (cyan = it fits, violet = it is a gap — semantic, never decorative). |

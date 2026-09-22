@@ -52,76 +52,93 @@ own result (`kvasir/budget.py`):
 | Overhead | ×1.15 | chat, follow-ups and retries are billed but are not benchmark-shaped tasks |
 | Budget split | 35% architect · 45% worker · 20% scout | planning is the smallest slice of tasks and the largest slice of value |
 
-A "task" is a CursorBench task: a real, ambiguous, multi-file request. That is a heavier unit than
-a chat question, which is why the overhead factor exists rather than a second made-up task type.
+A "task" is one **Artificial Analysis Intelligence Index task**: the weighted average of one task
+across the index's ten evaluations — some agentic and long (AA-Briefcase, Terminal-Bench,
+AutomationBench), some a single hard question. That is a heavier unit than a chat question, which
+is why the overhead factor exists rather than a second made-up task type.
 
-**The unit grew on 2026-09-10.** CursorBench 4.0 added long-horizon problems, and a task is now
-roughly twice the work it was under 3.2 — measured across the models present in both suites, steps
-per task rose about 70% (Opus 5 · Max 78 → 106, GPT-5.6 Luna · Max 61 → 208) and cost per task rose
-between 10% and 160%. Scores fell with it: the top of the board went from 70.8% to 51.8%.
+**The unit has changed twice, and a projection is only comparable within one unit.**
 
-Two consequences, neither of them a reason to re-tune the constants above:
+1. **2026-09-10, CursorBench 3.2 → 4.0.** 4.0 added long-horizon problems and a task became roughly
+   twice the work: steps per task rose about 70% (Opus 5 · Max 78 → 106) and cost per task between
+   10% and 160%. The top score fell from 70.8% to 51.8%.
+2. **2026-09-22, CursorBench → Artificial Analysis.** The board is now scored by the Intelligence
+   Index (v4.3) and priced by the cost of one index task. The magnitudes are similar — Opus 5 · Max
+   is $5.86 a task here — but it is a different benchmark with a different task mix, and scores
+   are index points, not percentages.
 
-1. **Six tasks a day is now a heavier month than it was**, so the estimate became more conservative
-   without anyone deciding that. It is still the same explicit model, and it is still printed next
-   to its answer — but a projection made before 10 September and one made after are not measuring
-   the same month.
-2. **The verdict moved down the ladder on its own**, because per-task prices roughly doubled while
-   the tiers did not. That is the engine working: at Heavy the worker went from GPT-5.6 Terra · Max
-   to GPT-5.6 Luna · Max, and the monthly projection stayed near 27–31k credits.
+Neither is a reason to re-tune the constants above. Six tasks a day stays six tasks a day, printed
+next to its answer; a projection made before 22 September and one made after are not measuring
+the same month. If the real workload is ever measured from Copilot's usage metrics, replace the
+model — do not adjust `TASKS_PER_DAY` to keep an old number looking familiar across a source change.
 
-If the real workload is ever measured from Copilot's usage metrics, replace the model — do not
-adjust `TASKS_PER_DAY` to keep the old number looking familiar across a benchmark re-baselining.
+The two per-point ceilings below ($0.75 and $0.15 a point) were set on CursorBench's scale. The
+Intelligence Index spans a similar range (about 20 to 58 on our board), so they carry over, but they
+were not re-derived — treat that as an open question, not as a tuned result.
 
 ## How each role is filled
 
 - **Architect** — the highest-scoring model its share of the budget can pay for. Where planning is
-  concerned, buy the best you can afford.
+  concerned, buy the best you can afford. Never on the patience clock.
 - **Worker** — climbs the cost/quality frontier while each step costs at most **$0.75 per
-  percentage point** and still fits its share.
+  point** and still fits its share.
 - **Scout** — climbs only while a step is a **bargain (≤ $0.15 per point)**. Mechanical work does
   not repay more.
+- **Patience** — the worker and the scout only climb a frontier rebuilt from the variants that
+  answer inside the selected wait: **Fast** 30 s / 10 s, **Balanced** 90 s / 30 s, **Any** no limit
+  (worker / scout, seconds to the first answer token). A variant nobody has timed passes.
+- **Surplus** — once the economical picks are in, the plan spends the tier up to 80%, architect
+  first, and never past 90%. A lower role may not score more, or cost more per task, than the role
+  above it, and may not land on another role's exact variant.
 
-Both ceilings are the same thresholds the value ladder shows on the page, so nothing here is a
-private knob.
+Both per-point ceilings are the same thresholds the value ladder shows on the page, so nothing here
+is a private knob.
 
-## What that produces for these tiers (data of 2026-08-19)
+## What that produces for these tiers (data of 2026-09-22, Balanced patience)
 
 | Tier | Architect | Worker | Scout | Month | Used |
 |---|---|---|---|---|---|
-| **Basic** 13K | GPT-5.6 Terra · Max | GPT-5.6 Luna · Max | GPT-5.6 Luna · Max | ~8,400 cr ≈ $84 | **65%** |
-| **Heavy** 100K | Opus 5 · Max | GPT-5.6 Terra · Max | GPT-5.6 Luna · Max | ~30,900 cr ≈ $309 | **31%** |
-| **Power** 200K | Opus 5 · Max | GPT-5.6 Terra · Max | GPT-5.6 Luna · Max | ~30,900 cr ≈ $309 | **15%** |
+| **Basic** 13K | Opus 5.5 · Extra High | Opus 5.5 · Low | GPT-5.6 Terra · High | ~10,960 cr ≈ $110 | **84%** |
+| **Heavy** 100K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **30%** |
+| **Power** 200K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **15%** |
 
-Three conclusions worth arguing about at work:
+At **Any** patience, Basic's scout becomes GPT-5.6 Luna · Max (18 credits, but 116 s before it
+answers) and Heavy/Power buy Opus 5.5 · Extra High for the worker (~44,300 cr). At **Fast**, Heavy's
+scout drops to Opus 5.5 · Low (~25,100 cr).
 
-1. **Basic is enough for the average engineer — but only if Luna does the bulk.** The shortlist
-   chosen on merit alone (Opus 5 · Extra High planning, Terra · Max working) costs ~29,600 credits
-   a month: **228% of Basic**. At Basic the budget, not the benchmark, picks the models.
-2. **Heavy affords the best board available and still leaves 69% unused.** For a single-project
-   engineer it is not a constraint at all.
-3. **Power buys nothing extra for this profile.** It only starts to matter for people who run
-   several parallel sessions — a different workload, not a better model list.
+Four conclusions worth arguing about at work:
+
+1. **Opus 5.5 leads at every price from $0.55 a task up.** On Artificial Analysis's frontier it holds
+   every rung from Low to Max, so on a roomy tier all three roles are Opus 5.5 at three efforts.
+   That is the data, not a collapsed board: effort is the dial between the roles.
+2. **Basic is enough for the average engineer.** The merit-only shortlist costs ~29,600 credits
+   (228% of Basic), so at Basic the budget picks the models — and it still plans on Opus 5.5 for
+   the architect and the worker.
+3. **Heavy and Power stop at 15–30% because of the wait, not the money.** The next step up is
+   Opus 5.5 · Extra High, which thinks for 170 s before it answers; Balanced patience will not put
+   that on a role you wait on all day. Choose Any and the tier is spent further; the plan says which
+   rule stopped it next to the number.
+4. **GPT-6 Luna and GPT-6 Sol are not in this table yet.** Artificial Analysis scored and timed them
+   on release day (22 September) but has not priced them; they join the roles by themselves when it
+   does. On score they sit where GPT-5.6 Luna and Sol do (Luna · Max 37.3 both; Sol · Max 47.5 vs
+   47.0), at about half of Copilot's per-token price.
 
 ## The Luna effort question
 
-Dropping GPT-5.6 Luna to a lower effort to save credits is **not worth it at any tier**. Luna at
-Max is 39 credits per task; the whole worker + scout load (113 tasks a month, overhead included) is
-about 5,100 credits — 39% of Basic on its own. Lower efforts save single-digit credits per task and
-give up real quality:
+Asked in August on CursorBench: is dropping GPT-5.6 Luna to a lower effort worth the saving? On
+Artificial Analysis the answer turns on the wait rather than the credits:
 
-| Luna effort | $/task | Credits/task | CursorBench |
-|---|---|---|---|
-| Max | $0.39 | 39 | 61.1% |
-| Extra High | $0.23 | 23 | 57.7% |
-| High | $0.16 | 16 | 56.8% |
-| Medium | $0.08 | 8 | 47.7% |
-| Low | $0.03 | 3 | 37.6% |
+| Luna effort | $/task | Credits/task | Intelligence | Wait to first answer |
+|---|---|---|---|---|
+| Max | $0.18 | 18 | 37.3 | 116 s |
+| Extra High | $0.09 | 9 | 34.6 | 40 s |
+| High | $0.04 | 4 | 32.1 | 15 s |
+| Medium | $0.02 | 2 | 25.0 | 2.6 s |
+| Low | $0.01 | 1 | 21.0 | 1.7 s |
 
-Going Max → High saves 23 credits a task (~$0.23) and costs 4.3 points; Max → Medium saves 31
-credits and costs 13.4 points. On a 13,000-credit tier those savings buy headroom nobody needs.
-**Run Luna at Max.** The lower efforts are for a tier far smaller than Basic, or for a workload
-several times heavier than this one.
+Every effort is cheap next to any tier — the whole scout load at Max is about 1,000 credits a
+month. What Max costs is two minutes of silence per request. For a role you wait on repeatedly,
+**High** (15 s, 32.1) is the sensible Luna; Max belongs to a batch you do not sit and watch.
 
 ## Tuning it for a different profile
 

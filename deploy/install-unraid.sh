@@ -18,7 +18,7 @@ KV_IMAGE="${KV_IMAGE:-ghcr.io/morphem/kvasir:latest}"
 KV_NAME="${KV_NAME:-kvasir}"
 KV_PORT="${KV_PORT:-8688}"
 KV_APPDATA="${KV_APPDATA:-/mnt/user/appdata/kvasir}"
-KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7}"
+KV_DISABLED="${KV_DISABLED:-grok,fable,kimi-k2.7,gpt-6-astra}"
 # The AI Stupid Level key is a secret: it lives in a root-only file on the server and never
 # in this repo, in the Unraid template, or in a container label. Taken from the environment
 # when given, otherwise read back from the server so a redeploy cannot silently drop it.

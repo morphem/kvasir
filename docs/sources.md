@@ -2,21 +2,66 @@
 
 What each one is, how it is read, and what it must never be used for.
 
-## CursorBench — `https://cursor.com/cursorbench`
+## Artificial Analysis — `https://artificialanalysis.ai/models`
 
-Cursor's own evaluation of agents on ambiguous, multi-file tasks from real sessions. The only
-source that publishes an **end-to-end cost per task**, and the only one that separates a model
-from its **effort** setting — which is why the whole page is organised around it.
+Independent evaluation on their own hardware. For every model **at every effort setting** it
+publishes the **Intelligence Index** (ten evaluations: AA-Briefcase, GDPval-AA, AutomationBench-AA,
+Terminal-Bench 4.0, SciCode, Humanity's Last Exam, GDP-PDF, CritPt, AA-Omniscience and long-context
+reasoning — v4.3 in September 2026), the **cost of one index task**, the output tokens it took, how
+fast the model types and **how long you wait before the first answer token**. Quality, price and
+time from the same runs — which is why this is the source the board is scored by, since
+2026-09-22.
 
-Read from: the server-rendered leaderboard, as text. There is no API and no JSON payload in the
-page; the rows are a CSS grid and arrive as run-together strings. Fields: rank, model, effort,
-score %, $/task, tokens/task, steps/task, plus the benchmark version (3.2 as of 2026-08-18).
+Read from: the page's **React Server Components payload** — the `self.__next_f.push([1, "…"])`
+scripts Next.js streams every page with. The full table sits in it as plain JSON objects, one per
+variant, each opening with its id and slug; the collector reassembles the stream, decodes those
+objects with the standard library and ignores everything else. **Every model page carries every
+model** (665 variants on 2026-09-22), so the URL is an entry point, not a subject — it is
+`KVASIR_AA_URL`, because the page it names could be retired.
 
-Moves on the scale of weeks — the page carries a changelog of re-runs (the most recent entries
-re-priced Sonnet 5, Terra and Luna). Polled every 12 hours.
+Three things that are *not* the data, and why the collector does not use them:
 
-**Do not** compare a CursorBench score across effort levels without saying which effort: the same
-model spans double-digit percentage points from low to max, and costs up to 20× more.
+- The **schema.org `Dataset` blocks** (JSON-LD) carry only the top twenty of each chart. The old
+  speed reader used them, which is why Sonnet 5, Terra and Sol "had no speed" in September.
+- The `/data/*.txt` file the site's own charts load is **encrypted**. It is left alone.
+- Their REST API needs a key, and was not needed.
+
+This payload is an implementation detail of their site, not an API. The parser therefore refuses
+a half-read page: fewer than `MIN_ROWS` variants or `MIN_PRICED` priced ones raises, the run log
+records it, and the page keeps the last good reading.
+
+What each field means, and how it is used:
+
+| Field | Their words | Used as |
+|---|---|---|
+| `intelligenceIndex` | "Artificial Analysis Intelligence Index" | the score; decides the roles |
+| `intelligenceIndexCostPerTask.cost.total` | "Weighted average cost (USD) per Intelligence Index task" | the price of a task; the credit budget |
+| `timeToFirstAnswerToken.total` | "Seconds to first answer token received · Accounts for reasoning model 'thinking' time" | the wait; patience filters the loop roles by it |
+| `timescaleData.medianOutputSpeed` | "Output tokens per second" | how fast it types; shown, never decides |
+| `endToEndResponseTime.total` | "Seconds to output 500 tokens, including reasoning model 'thinking' time" | one exchange; shown |
+| `terminalBench40` | Terminal-Bench 4.0 | a coding cross-check; shown, never decides |
+
+**The unit is an Intelligence Index task**, a weighted average over ten evaluations — some of
+them agentic and long, some a single hard question. It is not a CursorBench task, and credits per
+task before and after 2026-09-22 are not the same measurement (see `docs/credits.md`).
+
+**A new release is timed before it is priced.** GPT-6 Luna and GPT-6 Sol appeared on release day
+with a score, a speed and token counts but no cost per task. Such a variant is on the board and
+never in a role: a budget cannot be planned on no price, and estimating one from token counts
+needs a cache-hit assumption that moves the answer by a factor of three. It joins the roles when
+the price is published.
+
+**Waiting is per effort; typing speed is not.** Reasoning effort *is* the waiting: Opus 5.5 answers
+in 13 seconds at high and 170 at extra high. A variant without its own wait has no wait. Decode
+rate belongs to the model and its hardware, so a variant that was not timed shows its family's,
+labelled with the effort it came from. **Do not** write a rule that treats a missing measurement
+as a slow model.
+
+**Non-reasoning modes have no effort** and never reach the board — no number is shown without the
+effort it was measured at. They are archived like everything else.
+
+Polled every 12 hours. The Intelligence Index is versioned, and a new version is a re-baseline:
+`db.benchmark_versions()` keeps the timeline and the page says so for six weeks after a change.
 
 ## AI Stupid Level — `https://aistupidlevel.info/`
 
@@ -53,47 +98,13 @@ Tier/Threshold, some carry Cache write). Long-context tiers are kept as separate
 default tier is the one the verdict prices against. Polled every 12 hours.
 
 **Do not** treat a Copilot price as a per-task cost. It is per million tokens; the per-task figure
-comes from CursorBench, and the two only meet in the verdict cards.
+comes from Artificial Analysis, and the two only meet in the verdict cards.
 
-## Artificial Analysis — `https://artificialanalysis.ai/models`
+## Retired: CursorBench — `https://cursor.com/cursorbench`
 
-Independent timing: **output tokens per second**, measured on dedicated hardware. The only source
-here that measures a clock. It exists because the page kept recommending models nobody would
-actually start: a model can win on score and price and still be the wrong choice, because you sit
-watching it think. Opus 5 measures 52 tokens a second against Gemini 3.8 Flash's 278 — a fact no
-other source on this page could express.
-
-Read from the page's **schema.org `Dataset` blocks** (`<script type="application/ld+json">`), one
-per chart, each row labelled with the model and the effort it ran at. Proper structured data, so
-this collector needs no scraping heuristics — and any chart they add arrives as extra metrics with
-no code change. Their REST API needs a key; the page does not.
-
-**Fetch a model page, not the listing.** `/models` carries a single output-speed figure per model;
-a model page such as `/models/claude-opus-5` adds the datasets that matter — latency and
-end-to-end response time — and its rows are per effort. Those datasets are global leaderboards:
-two different model pages return byte-identical sets, so the URL is an entry point rather than a
-subject. It is `KVASIR_SPEED_URL`, because the page it names could be retired.
-
-Three clocks, with the units quoted from their own dataset descriptions:
-
-| Metric | Their words | Reads as |
-|---|---|---|
-| Output speed | "Output tokens per second" | how fast it types |
-| Latency: Time To First Answer Token | "Seconds to first answer token received · Accounts for reasoning model 'thinking' time" | how long you sit there before it starts |
-| End-to-End Response Time | "Seconds to output 500 tokens, including reasoning model 'thinking' time" | one exchange, start to finish |
-
-The latency charts are stacked bars — input time, thinking time, answer time — so the components
-are added rather than read off a single key, and **a zero is absent, not instant**: an empty bar
-would otherwise make the slowest model look like the fastest.
-
-**Speed carries across efforts; latency does not.** Decode rate is a property of the model and its
-hardware, so one measurement stands for the family, labelled with the effort it came from. Waiting
-time is not: Opus 5 takes 49.7 seconds to its first answer token at max effort and 3.8 at medium.
-Lending one effort's clock to another would be a fiction.
-
-Polled daily; independent timings move with model releases, not hours.
-
-**Coverage is partial, and that shapes the rules.** In September the set carried 11 timed models:
-Gemini 3.8 Flash, Muse Spark, Luna, Fable 5.1, Grok, Opus 5, Kimi K3 and others — but not GPT-5.6
-Sol, GPT-5.6 Terra or Sonnet 5. **Do not** write a rule that treats a missing measurement as a slow
-model. The speed floor applies only to models this source has actually timed.
+Scored the board from 2026-08-18 to 2026-09-22: Cursor's own evaluation of agents on ambiguous,
+multi-file tasks, with cost, tokens and steps per task at every effort. Replaced by Artificial
+Analysis, which publishes the same per-effort cost and score for far more models and adds the
+wait. Its snapshots stay in the archive and readable through `/api/history?source=cursorbench`,
+as do those of the JSON-LD speed reader (`source=speed`). Its 3.2 → 4.0 re-baseline on 2026-09-10
+is why the benchmark-version timeline exists.
