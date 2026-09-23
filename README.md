@@ -61,7 +61,7 @@ add the container from the template — updates then arrive the normal Unraid wa
 |---|---|---|
 | `KVASIR_DATA_DIR` | `/data` | Where the SQLite archive lives |
 | `KVASIR_INTERVAL_STUPIDLEVEL` | `240` | Drift poll interval, minutes. The free API tier allows 10 calls a day |
-| `KVASIR_INTERVAL_AA` | `720` | Artificial Analysis poll interval, minutes |
+| `KVASIR_INTERVAL_AA` | `180` | Artificial Analysis poll interval, minutes |
 | `KVASIR_AA_URL` | `…/models/claude-opus-5-5` | The Artificial Analysis page the board is read from. Every model page carries every model; this is only an entry point |
 | `KVASIR_INTERVAL_COPILOT` | `720` | Copilot pricing poll interval, minutes |
 | `KVASIR_STUPIDLEVEL_API_KEY` | *(empty)* | Free key from aistupidlevel.info. Falls back to `secrets.env` or `stupidlevel_api_key.key` inside the data volume, which is what survives a container rebuild. Without a key the drift scores freeze at the last good reading |

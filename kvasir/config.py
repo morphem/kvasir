@@ -81,9 +81,10 @@ class Settings:
     # Hourly until the source went key-only; the free tier now allows 10 requests a day, so
     # six-a-day leaves room for retries. Lower it if a paid key ever arrives.
     interval_stupidlevel: int = _int("KVASIR_INTERVAL_STUPIDLEVEL", 240)
-    # Artificial Analysis re-runs a model when it ships, and prices a new release a few days
-    # after timing it — twice a day is enough to catch both without leaning on their site.
-    interval_aa: int = _int("KVASIR_INTERVAL_AA", 720)
+    # Artificial Analysis re-runs a model when it ships, and prices a new release some hours or
+    # days after timing it. Every three hours puts a newly priced model on the board the same
+    # morning rather than up to half a day late, and is still only eight page reads a day.
+    interval_aa: int = _int("KVASIR_INTERVAL_AA", 180)
     interval_copilot: int = _int("KVASIR_INTERVAL_COPILOT", 720)
     # AI Stupid Level's published run history, which draws the sparklines. Daily was too
     # slow: the headline score moves hourly, so the chart beside it was up to a day behind.

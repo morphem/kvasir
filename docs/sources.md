@@ -60,7 +60,9 @@ as a slow model.
 **Non-reasoning modes have no effort** and never reach the board — no number is shown without the
 effort it was measured at. They are archived like everything else.
 
-Polled every 12 hours. The Intelligence Index is versioned, and a new version is a re-baseline:
+Polled every 3 hours, so a release that gets its price lands on the board within three hours of
+it — GPT-6 Luna and Sol were timed but unpriced on their release day, 2026-09-22. The
+Intelligence Index is versioned, and a new version is a re-baseline:
 `db.benchmark_versions()` keeps the timeline and the page says so for six weeks after a change.
 
 ## AI Stupid Level — `https://aistupidlevel.info/`
