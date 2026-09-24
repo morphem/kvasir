@@ -22,11 +22,12 @@ def build(disabled=None, show_all=False):
     )
 
 
-def aa_row(key, effort, score, cost_uusd, wait=None, tps=None):
+def aa_row(key, effort, score, cost_uusd, minutes=None, wait=None, tps=None):
     """One Artificial Analysis variant, with only the fields the verdict reads."""
     return {
         "model_key": key, "effort": effort, "score": score, "cost_uusd": cost_uusd,
         "output_tokens": 1000, "terminal_bench": None, "tokens_per_second": tps,
+        "task_seconds": minutes * 60 if minutes is not None else None,
         "first_answer_seconds": wait, "end_to_end_seconds": None, "thinking_seconds": None,
         "deprecated": False, "released": "",
     }
@@ -139,10 +140,10 @@ def test_tasks_carry_their_role():
 
 
 def test_patience_decides_the_loop_roles_only():
-    """A model that thinks for two minutes loses the scout's seat at Fast, never the architect's."""
+    """A model that takes ten minutes a task loses the scout's seat at Fast, never the architect's."""
     rows = [
-        aa_row("thinker", "max", 60.0, 300_000, wait=120),
-        aa_row("quick", "low", 40.0, 100_000, wait=3),
+        aa_row("thinker", "max", 60.0, 300_000, minutes=10),
+        aa_row("quick", "low", 40.0, 100_000, minutes=1),
     ]
     view = recommend.build(rows, [], sold("thinker", "quick"), Settings(), [])
     fast = picks(view, "basic", "fast")
@@ -282,7 +283,7 @@ def test_a_frozen_drift_signal_stops_vetoing():
 def test_speed_is_the_variants_own_and_typing_speed_is_lent_with_its_source():
     """Waiting is never borrowed across efforts; typing speed is, and says where from."""
     rows = [
-        aa_row("m", "high", 50.0, 1_000_000, wait=12, tps=85),
+        aa_row("m", "high", 50.0, 1_000_000, minutes=4, wait=12, tps=85),
         aa_row("m", "max", 55.0, 2_000_000),
     ]
     view = recommend.build(rows, [], sold("m"), Settings(), [])
@@ -291,3 +292,31 @@ def test_speed_is_the_variants_own_and_typing_speed_is_lent_with_its_source():
     assert by_effort["max"]["first_answer_seconds"] is None
     assert by_effort["max"]["tokens_per_second"] == 85
     assert by_effort["max"]["measured_effort"] == "high"
+
+
+def test_an_untimed_effort_takes_at_least_as_long_as_the_timed_one_below_it():
+    """Opus 5.5 · Max, untimed, walked into a Fast worker's seat the day its High crossed the
+    ceiling — the slowest variant on the board, passed as "not measured"."""
+    rows = [
+        aa_row("m", "low", 40.0, 500_000, minutes=1),
+        aa_row("m", "xhigh", 55.0, 3_000_000, minutes=8),
+        aa_row("m", "max", 58.0, 6_000_000),          # no time of its own
+        aa_row("lone", "max", 45.0, 1_000_000),       # no timed effort at all
+    ]
+    view = recommend.build(rows, [], sold("m", "lone"), Settings(), [])
+    speed = {(c["key"], c["effort"]): c["speed"] for c in view["candidates"]}
+    assert speed[("m", "max")]["task_minutes"] == 8
+    assert speed[("m", "max")]["task_minutes_floor_from"] == "xhigh"
+    assert speed[("m", "low")]["task_minutes_floor_from"] is None
+    assert speed[("lone", "max")] is None  # absence of evidence still decides nothing
+    for by_patience in view["plans"].values():
+        for patience_id in ("fast", "balanced"):
+            worker = by_patience[patience_id]["roles"]["worker"]["pick"]
+            assert (worker["key"], worker["effort"]) != ("m", "max")
+
+
+def test_the_market_is_listed_for_scale_and_never_planned():
+    view = build()
+    market = {m["key"] for m in view["market"]}
+    assert market and not market & {c["key"] for c in view["candidates"]}
+    assert all(m["reason"] for m in view["market"])

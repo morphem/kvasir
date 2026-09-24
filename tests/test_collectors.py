@@ -30,6 +30,9 @@ def test_artificialanalysis_keeps_effort_per_row():
     assert opus["high"]["first_answer_seconds"] == 12.7
     assert opus["high"]["tokens_per_second"] == 84.6
     assert opus["max"]["tokens_per_second"] is None  # not timed yet: absent, never zero
+    # Time per task is published in seconds; their chart shows minutes (Opus 5.5 High: 4.4).
+    assert opus["high"]["task_seconds"] == 266.4
+    assert opus["max"]["task_seconds"] is None
 
 
 def test_artificialanalysis_money_is_integer_micro_dollars():

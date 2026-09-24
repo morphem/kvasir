@@ -29,24 +29,56 @@ def _usd(uusd: int | None) -> float | None:
     return None if uusd is None else round(uusd / 1_000_000, 4)
 
 
-def _speed_block(row: dict, family: dict | None) -> dict | None:
-    """What we know about this exact variant's clock, and at what setting we know it.
+EFFORT_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
 
-    Waiting time is the variant's own or nothing: reasoning effort *is* the waiting, so
-    lending one effort's clock to another would be a fiction. Typing speed is a property of
-    the model and its hardware, so a variant that was not timed borrows its family's, and
-    says which effort that came from.
+
+def _task_floor(row: dict, timed: dict[str, dict[str, float]]) -> tuple[float, str] | None:
+    """For a variant nobody timed: the longest task time of a lower effort of the same model.
+
+    Reasoning effort is the waiting, so raising it does not make a task shorter — an untimed
+    Max takes at least as long as a timed Extra High. Without this floor the rule "unmeasured
+    is not slow" put Opus 5.5 · Max, the slowest variant on the board, into a Fast worker's
+    seat the day its High crossed the ceiling. A model with no timed effort at all still
+    passes: that is absence of evidence, and it decides nothing.
+    """
+    rank = EFFORT_ORDER.get(row["effort"])
+    if rank is None:
+        return None
+    lower = [
+        (seconds, effort)
+        for effort, seconds in timed.get(row["model_key"], {}).items()
+        if EFFORT_ORDER.get(effort, 99) < rank
+    ]
+    return max(lower) if lower else None
+
+
+def _speed_block(row: dict, family: dict | None, floor: tuple[float, str] | None) -> dict | None:
+    """What we know about this exact variant's clocks, and at what setting we know each.
+
+    Time per task — one loop of an agent, the clock patience is set on — and the wait to the
+    first answer are the variant's own: reasoning effort *is* the waiting, so lending one
+    effort's clock to another would be a fiction. The one exception is the floor above, which
+    is a lower bound and labelled as one. Typing speed is a property of the model and its
+    hardware, so a variant that was not timed borrows its family's, and says which effort
+    that came from.
     """
     own_speed = row.get("tokens_per_second")
     source = row if own_speed else family
+    task_seconds = row.get("task_seconds")
     block = {
+        "task_minutes": round(task_seconds / 60, 1) if task_seconds else None,
+        "task_minutes_floor_from": None,
         "tokens_per_second": source.get("tokens_per_second") if source else None,
         "measured_effort": source.get("effort") if source else None,
         "first_answer_seconds": row.get("first_answer_seconds"),
         "end_to_end_seconds": row.get("end_to_end_seconds"),
         "thinking_seconds": row.get("thinking_seconds"),
     }
-    return block if any(v for k, v in block.items() if k != "measured_effort") else None
+    if not task_seconds and floor:
+        block["task_minutes"] = round(floor[0] / 60, 1)
+        block["task_minutes_floor_from"] = floor[1]
+    keys = ("task_minutes", "tokens_per_second", "first_answer_seconds", "end_to_end_seconds")
+    return block if any(block[k] for k in keys) else None
 
 
 def merge(
@@ -68,9 +100,14 @@ def merge(
         copilot_by_model.setdefault(row["model_key"], row)
 
     family_speed: dict[str, dict] = {}
+    timed: dict[str, dict[str, float]] = {}
     for row in aa_rows:
-        if row.get("tokens_per_second") and row["effort"] != "default":
+        if row["effort"] == "default":
+            continue
+        if row.get("tokens_per_second"):
             family_speed.setdefault(row["model_key"], row)
+        if row.get("task_seconds"):
+            timed.setdefault(row["model_key"], {})[row["effort"]] = row["task_seconds"]
 
     candidates = []
     for row in aa_rows:
@@ -106,7 +143,7 @@ def merge(
                     "ci_low": drift.get("ci_low"),
                     "ci_high": drift.get("ci_high"),
                 },
-                "speed": _speed_block(row, family_speed.get(key)),
+                "speed": _speed_block(row, family_speed.get(key), _task_floor(row, timed)),
                 "copilot": None
                 if not copilot
                 else {
@@ -363,6 +400,15 @@ def build(
         # What GitHub sells us and the organisation switched off: a choice worth showing.
         excluded = [c for c in candidates if not c["available"] and c["copilot"]]
     priced = [c for c in visible if c["priced"]]
+    # The rest of the market, for scale on the charts only: current models we cannot start,
+    # one variant each (their best-scoring priced one), never planned and never in a table.
+    shown = {c["key"] for c in visible}
+    market: dict[str, dict] = {}
+    for c in candidates:
+        if c["key"] in shown or c["deprecated"] or not c["priced"]:
+            continue
+        if c["key"] not in market or c["score"] > market[c["key"]]["score"]:
+            market[c["key"]] = c
     drift_newest, drift_age_hours = drift_freshness(ai_rows)
     drift_trusted = drift_age_hours is not None and drift_age_hours <= DRIFT_TRUST_HOURS
 
@@ -397,6 +443,15 @@ def build(
             key=lambda c: c["label"],
         ),
         "excluded": sorted(excluded, key=lambda c: -c["score"]),
+        "market": [
+            {
+                "key": c["key"], "label": c["label"], "score": c["score"],
+                "cost_usd": c["cost_usd"], "output_tokens": c["output_tokens"],
+                "task_minutes": (c["speed"] or {}).get("task_minutes"),
+                "reason": c["unavailable_reason"],
+            }
+            for c in sorted(market.values(), key=lambda c: -c["score"])
+        ],
         "availability_known": availability_known,
         "drift_trusted": drift_trusted,
         "drift_age_hours": drift_age_hours,

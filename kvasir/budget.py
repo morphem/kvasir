@@ -37,23 +37,27 @@ BUDGET_SHARES = {"architect": 0.35, "worker": 0.45, "scout": 0.20}
 FAIR_USD_PER_PP = 0.75
 BARGAIN_USD_PER_PP = 0.15
 
-# Patience: the longest wait before the first answer token, in seconds, that a loop role may
-# put you through. The worker and the scout are waited on repeatedly, all day, so a model that
-# thinks for two minutes before it types does not belong there whatever it scores. The
-# architect is exempt: for planning you wait once, on purpose.
+# Patience: the longest a loop role may take over one task, in minutes. The worker and the
+# scout are the roles you iterate with — prompt, read, correct, prompt again — so the length of
+# one loop is the length of the whole job divided by nothing: a model that takes eight minutes
+# per task makes a ten-round session last an afternoon. The architect is exempt: a plan is
+# made once, deliberately, and it is worth waiting for.
 #
-# The wait is the variant's own — Artificial Analysis times every effort separately, and
-# reasoning effort *is* the waiting (Opus 5.5 answers in 13 s at high and 170 s at xhigh).
-# It replaced a tokens-per-second floor: once the source covered every model, a typing-speed
-# floor of 80 barred Sonnet 5, Terra and Sol outright, while saying nothing about the two
-# minutes a max-effort Luna sits silent. The page switches between these like it switches tiers.
+# The clock is Artificial Analysis's time per Intelligence Index task — decode time, reasoning
+# included — measured in the same runs as the score and the cost, per effort. Reasoning effort
+# *is* the time: Opus 5.5 takes 1.3 minutes a task at low and 7.5 at extra high. It replaced two
+# earlier clocks: a tokens-per-second floor, which barred whole models once the source timed
+# everything, and the wait to the first answer, which says when a loop starts, not how long it
+# lasts. The page switches between these like it switches tiers.
 #
-# Unmeasured is not slow. A variant this source has not timed passes, for the same reason an
-# unmeasured model cannot win a drift veto: absence of evidence decides nothing.
+# Unmeasured is not slow. A variant with no time passes — unless a lower effort of the same model
+# was timed, in which case it takes at least that long (see recommend._task_floor). A model
+# nobody has timed at all passes, for the same reason an unmeasured model cannot win a drift
+# veto: absence of evidence decides nothing.
 PATIENCE = {
-    "fast": {"label": "Fast", "worker": 30, "scout": 10},
-    "balanced": {"label": "Balanced", "worker": 90, "scout": 30},
-    "any": {"label": "Any wait", "worker": None, "scout": None},
+    "fast": {"label": "Fast", "worker": 3.0, "scout": 1.5},
+    "balanced": {"label": "Balanced", "worker": 6.0, "scout": 3.0},
+    "any": {"label": "Any pace", "worker": None, "scout": None},
 }
 DEFAULT_PATIENCE = "balanced"
 
@@ -81,15 +85,15 @@ def drifting(candidate: dict) -> bool:
     return drift.get("trend") == "down" or drift.get("status") in DRIFT_DOWN_STATUSES
 
 
-def wait_of(candidate: dict) -> float | None:
-    """Seconds to the first answer token, for this exact variant — or None if nobody timed it."""
+def loop_minutes(candidate: dict) -> float | None:
+    """Minutes one task takes on this exact variant — or None if nobody timed it."""
     speed = candidate.get("speed")
-    return speed.get("first_answer_seconds") if speed else None
+    return speed.get("task_minutes") if speed else None
 
 
 def quick_enough(candidate: dict, ceiling: float | None) -> bool:
-    wait = wait_of(candidate)
-    return ceiling is None or wait is None or wait <= ceiling
+    minutes = loop_minutes(candidate)
+    return ceiling is None or minutes is None or minutes <= ceiling
 
 
 def frontier(candidates: list[dict]) -> list[dict]:
@@ -203,8 +207,8 @@ def _why(
     if speed_blocked:
         base += (
             f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}): "
-            f"{speed_blocked['wait_seconds']:.0f} s to its first answer, over the {ceiling:.0f} s "
-            "this patience allows."
+            f"{speed_blocked['task_minutes']:g} min a task, over the {ceiling:g} min this "
+            "patience allows."
         )
     if drift_replaced:
         base += f" Not {drift_replaced['label']} — sliding on AI Stupid Level."
@@ -239,6 +243,11 @@ def _best_upgrade(pick: dict, pool: list[dict], credit_usd: float, allowed=None)
 ROLE_ORDER = {"architect": 0, "worker": 1, "scout": 2}
 
 
+def _below(upper: dict, candidate: dict) -> bool:
+    """Does `candidate` sit at or under `upper` on both score and price per task?"""
+    return candidate["score"] <= upper["score"] and candidate["cost_uusd"] <= upper["cost_uusd"]
+
+
 def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
     """Would this upgrade still leave three distinguishable roles?
 
@@ -267,7 +276,7 @@ def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
 
 STOP_REASONS = {
     "target": "the plan reached its target share of the tier",
-    "speed": "every better model makes you wait longer than this patience setting allows",
+    "speed": "every better model takes longer per task than this patience setting allows",
     "roles": "every upgrade left would collapse two roles onto one model",
     "cap": "the next step up would pass the safety margin",
     "board": "nothing better exists on the board",
@@ -372,7 +381,7 @@ def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_tru
 
 
 def _loop_pool(candidates: list[dict], ceiling: float | None) -> list[dict]:
-    """The frontier a loop role climbs: rebuilt without the variants too slow to wait on.
+    """The frontier a loop role climbs: rebuilt without the variants too slow to iterate with.
 
     Filtering the finished frontier would be wrong — a slow rung removed from it can hide a
     quick variant it used to dominate, and that variant is exactly the one this role wants.
@@ -441,6 +450,7 @@ def plan_for_tier(
             drift_replaced = None
         state[role] = {
             "pick": pick,
+            "pool": pool,
             "drift_replaced": drift_replaced,
             # Spending the surplus is bounded by the tier, not by the opening allocation.
             "surplus_pool": surplus_pool,
@@ -451,6 +461,19 @@ def plan_for_tier(
             "per_task": per_task,
         }
 
+    # Each loop role climbs its own frontier, and with patience filtering them differently the
+    # scout's can end on a variant the worker skipped because a cheaper, better one existed —
+    # at Heavy/Fast the scout took Opus 5.5 · Low at 55 credits under a worker on GPT-6 Sol at
+    # 53. A lower role never scores more or costs more than the one above it; if the opening
+    # pick breaks that, it steps down to the best in its pool that does not, or shares the
+    # upper role's pick (said once on the card) when nothing does.
+    for upper, lower in (("architect", "worker"), ("worker", "scout")):
+        above, pick = state[upper]["pick"], state[lower]["pick"]
+        if not above or not pick or _below(above, pick):
+            continue
+        fitting = [c for c in state[lower]["pool"] if _below(above, c)]
+        state[lower]["pick"] = max(fitting, key=lambda c: (c["score"], -c["cost_uusd"])) if fitting else above
+
     # Phase two: an unused credit buys nothing, so climb until the tier is properly used.
     upgrades = _spend_the_tier(state, tier["credits"], credit_usd, drift_trusted)
     stopped_because = state.pop("_stopped", None)
@@ -458,7 +481,7 @@ def plan_for_tier(
 
     # What patience cost each loop role, so the card can say it rather than just differ: the
     # best model the role could otherwise have taken — affordable, and still below the role
-    # above it — that makes you wait too long. Asked after the surplus walk, because before it
+    # above it — that takes too long per task. Asked after the surplus walk, because before it
     # the answer names models the role-order rule would have refused anyway.
     for role in ("worker", "scout"):
         slot = state[role]
@@ -477,7 +500,7 @@ def plan_for_tier(
             slot["speed_blocked"] = {
                 "label": best["label"],
                 "score": best["score"],
-                "wait_seconds": wait_of(best),
+                "task_minutes": loop_minutes(best),
             }
     state["architect"]["speed_blocked"] = None
 

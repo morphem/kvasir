@@ -97,6 +97,10 @@ def _row(record: dict) -> dict:
     tokens = _num((record.get("intelligenceIndexOutputTokensPerTask") or {}).get("output"))
     first_answer = record.get("timeToFirstAnswerToken") or {}
     terminal = _num(record.get("terminalBench40"))
+    # "Weighted average decode time per task; excludes TTFT and overhead time" — in seconds in
+    # the record (their chart shows minutes). Measured in the same runs as the score and the
+    # cost, so every priced variant has one: it is how long one loop of an agent takes.
+    task_seconds = _num(record.get("intelligenceIndexTimePerTask"))
     return {
         "model_key": key,
         "effort": _effort(record),
@@ -116,6 +120,7 @@ def _row(record: dict) -> dict:
         "end_to_end_seconds": _round(
             _num((record.get("endToEndResponseTime") or {}).get("total")) or None
         ),
+        "task_seconds": _round(task_seconds or None),
         "deprecated": bool(record.get("deprecated")),
         "released": record.get("releaseDate") or "",
     }

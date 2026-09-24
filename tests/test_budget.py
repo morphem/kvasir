@@ -114,24 +114,24 @@ def test_the_surplus_walk_runs_or_says_why_it_did_not():
         assert moved or plan["stopped_because"], f"{plan['name']} neither spent nor explained"
 
 
-def test_a_role_you_wait_on_never_outwaits_its_patience():
-    """The architect may be slow — you wait once, deliberately. The loop roles may not."""
+def test_a_role_you_iterate_with_never_outlasts_its_patience():
+    """The architect may be slow — a plan is made once, deliberately. The loop roles may not."""
     for plan in every_plan(view()):
         ceilings = budget.PATIENCE[plan["patience"]]
         for name in ("worker", "scout"):
             pick = plan["roles"][name]["pick"]
-            wait = budget.wait_of(pick) if pick else None
-            if wait is not None and ceilings[name] is not None:
-                assert wait <= ceilings[name], f"{name} makes you wait {wait}s at {plan['patience']}"
+            minutes = budget.loop_minutes(pick) if pick else None
+            if minutes is not None and ceilings[name] is not None:
+                assert minutes <= ceilings[name], f"{name} takes {minutes} min at {plan['patience']}"
 
 
 def test_an_unmeasured_model_is_not_treated_as_slow():
     """Absence of a measurement decides nothing — the same rule the drift veto learned."""
     unmeasured = {"key": "mystery", "effort": "max", "score": 60.0, "cost_uusd": 1_000_000}
-    assert budget.quick_enough(unmeasured, 10)
-    assert budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 4}}, 10)
-    assert not budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 40}}, 10)
-    assert budget.quick_enough({**unmeasured, "speed": {"first_answer_seconds": 400}}, None)
+    assert budget.quick_enough(unmeasured, 3)
+    assert budget.quick_enough({**unmeasured, "speed": {"task_minutes": 2}}, 3)
+    assert not budget.quick_enough({**unmeasured, "speed": {"task_minutes": 8}}, 3)
+    assert budget.quick_enough({**unmeasured, "speed": {"task_minutes": 40}}, None)
 
 
 def test_no_plan_ever_passes_the_safety_cap():
@@ -150,7 +150,7 @@ def test_surplus_reaches_planning_before_the_mechanical_role():
     # Sized so the opening shares cannot reach the top rung but the tier's surplus can —
     # otherwise every role starts at the top and there is nothing to order.
     rows = [
-        aa_row(f"rung{index}", "max", score, cost, wait=1)
+        aa_row(f"rung{index}", "max", score, cost, minutes=0.5)
         for index, (score, cost) in enumerate([(50.0, 1_000_000), (55.0, 3_000_000), (60.0, 30_000_000)])
     ]
     settings = Settings(tiers=[{"id": "one_step", "name": "One step", "credits": 100_000}])
@@ -214,3 +214,20 @@ def test_a_richer_tier_is_never_told_it_fell_short():
             # the named model must genuinely cost more than the role's ceiling, and be better
             assert reach["per_task_credits"] > reach["ceiling_credits"]
             assert reach["score"] >= slot["pick"]["score"]
+
+
+def test_a_scout_never_opens_dearer_than_its_worker():
+    """At Heavy/Fast the scout's quick frontier ended on Opus 5.5 · Low (55 credits) while the
+    worker's ended on GPT-6 Sol · Extra High (53): the worker had skipped it for a cheaper,
+    better variant. The opening picks keep the stack's shape too, not only the surplus walk."""
+    rows = [
+        aa_row("a", "medium", 39.8, 248_000, minutes=1.0),
+        aa_row("b", "low", 42.3, 551_000, minutes=1.3),    # quick enough for the scout
+        aa_row("c", "xhigh", 44.1, 532_000, minutes=2.5),  # too slow for it, fine for the worker
+    ]
+    payload = recommend.build(rows, [], sold("a", "b", "c"), Settings(), [], credit_usd=0.01)
+    for by_patience in payload["plans"].values():
+        roles = by_patience["fast"]["roles"]
+        assert roles["worker"]["pick"]["key"] == "c"
+        assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
+        assert roles["scout"]["pick"]["key"] == "a"
