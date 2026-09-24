@@ -201,3 +201,31 @@ def test_two_ticks_at_once_poll_each_source_once(monkeypatch):
 
     asyncio.run(both())
     assert sorted(polled) == sorted([*MODULES, "backfill"])
+
+
+def test_the_changelog_names_the_version_and_only_real_places():
+    """The version is the newest entry; every "show me" opens a tab and a chart that exist."""
+    import pathlib
+    import re
+
+    from kvasir import changelog
+
+    body = client().get("/api/changelog").json()
+    assert body["version"] == changelog.VERSION == body["entries"][0]["version"]
+    assert client().get("/api/view").json()["version"] == changelog.VERSION
+
+    versions = [entry["version"] for entry in changelog.CHANGELOG]
+    assert len(versions) == len(set(versions))
+    dates = [entry["date"] for entry in changelog.CHANGELOG]
+    assert dates == sorted(dates, reverse=True)
+
+    page = (pathlib.Path(__file__).parents[1] / "web" / "app.js").read_text(encoding="utf-8")
+    panels = set(re.findall(r'\{ id: "([a-z]+)", label:', page))
+    assert panels == changelog.PANELS
+    for entry in changelog.CHANGELOG:
+        assert entry["title"] and entry["items"]
+        for item in entry["items"]:
+            where = item.get("where")
+            if where:
+                assert where["panel"] in panels
+                assert where.get("map", "cost") in changelog.MAPS

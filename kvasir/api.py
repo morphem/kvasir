@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 
-from . import db, recommend, scheduler
+from . import changelog, db, recommend, scheduler
 from .collect import (
     BACKFILL_SOURCE,
     DASHBOARD_SERIES,
@@ -29,7 +29,9 @@ from .collectors import MODULES, RETIRED_SOURCES, SOURCE_LABELS
 from .config import settings
 from .naming import display_name
 
-__version__ = "1.0.0"
+# The version is the changelog's newest entry: adding an entry is what makes a deploy new, and
+# it is what the page compares against to decide whether to show "What's new".
+__version__ = changelog.VERSION
 
 log = logging.getLogger("kvasir")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -185,6 +187,12 @@ def view(all: bool = Query(False, description="include models hidden by configur
         }
     )
     return payload
+
+
+@app.get("/api/changelog")
+def changelog_entries():
+    """Every release, newest first, in the words the page shows them."""
+    return {"version": __version__, "entries": changelog.CHANGELOG}
 
 
 @app.get("/api/drift/{model_key}")

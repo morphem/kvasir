@@ -83,6 +83,7 @@ add the container from the template — updates then arrive the normal Unraid wa
 | `GET /api/health` | Per-source freshness and failure counts |
 | `GET /api/history?source=&model=&effort=&days=` | Archived readings for one model (retired sources `cursorbench` and `speed` stay readable) |
 | `GET /api/drift/{model_key}?days=` | Drift series (`aisl-run` by default) |
+| `GET /api/changelog` | Every release, newest first — what the "What's new" window shows |
 | `POST /api/refresh` | Force a collection round now |
 
 Krzysztof Prawdzik · BlinkNeuron

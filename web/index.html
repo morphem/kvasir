@@ -23,7 +23,8 @@
           <i>This page mixes three sources and answers one question. Same idea, fewer casualties.</i>
         </span>
       </span></h1>
-      <p class="tagline">Which agent to start, from three live sources.</p>
+      <p class="tagline">Which agent to start, from three live sources.
+        <button class="version-link" id="version-link" type="button" hidden></button></p>
     </div>
     <div class="topbar-right">
       <div class="eyebrow">Organisation AI credits tier</div>
@@ -227,10 +228,25 @@
       on a personal domain so it is one link away, and it carries no company data: every number on
       the page comes from three public sources.
     </p>
+    <p style="margin:1rem 0 0"><button class="text-link" id="changelog-link" type="button">Changelog</button></p>
     <div class="byline">Krzysztof Prawdzik · BlinkNeuron</div>
   </footer>
 
 </div>
+<dialog class="news" id="news" aria-labelledby="news-title">
+  <div class="news-head">
+    <div>
+      <div class="eyebrow" id="news-kicker"></div>
+      <h2 id="news-title">What's new</h2>
+    </div>
+    <button class="toggle" id="news-close" type="button" aria-label="Close">×</button>
+  </div>
+  <div class="news-body" id="news-body"></div>
+  <div class="news-foot">
+    <button class="toggle" id="news-all" type="button">Full changelog</button>
+    <button class="toggle primary" id="news-ok" type="button">Got it</button>
+  </div>
+</dialog>
 <script src="/app.js"></script>
 </body>
 </html>

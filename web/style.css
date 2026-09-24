@@ -666,3 +666,50 @@ section[data-panel="value"] ~ section[data-panel="value"] { margin-top: 3rem; }
   .scatter-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   #scatter { min-width: 760px; }
 }
+
+/* ---- what's new ----
+   A native <dialog>: Esc closes it, focus is trapped, and the backdrop dims the page. The
+   dialog itself has no padding, so a click on the dialog element can only be the backdrop. */
+.version-link, .text-link {
+  font: inherit; background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--cyan); text-decoration: underline; text-decoration-color: rgba(56, 225, 196, 0.4);
+  text-underline-offset: 3px;
+}
+.version-link { font-family: var(--mono); font-size: 0.78rem; margin-left: 0.4rem; white-space: nowrap; }
+.version-link:hover, .text-link:hover { text-decoration-color: var(--cyan); }
+.version-link:focus-visible, .text-link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; }
+
+dialog.news {
+  width: min(680px, calc(100vw - 2rem));
+  max-height: min(80vh, 760px);
+  padding: 0;
+  color: var(--text);
+  background: var(--raise);
+  border: 1px solid var(--edge);
+  border-top: 2px solid var(--cyan);
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+dialog.news[open] { display: flex; flex-direction: column; animation: news-in 0.22s ease-out; }
+dialog.news::backdrop { background: rgba(5, 7, 11, 0.72); }
+@keyframes news-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: none; } }
+.news-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding: 1.1rem 1.2rem 0.6rem; }
+.news-head h2 { margin-top: 0.3rem; }
+.news-body { overflow-y: auto; padding: 0.2rem 1.2rem 0.6rem; }
+.news-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.8rem 1.2rem 1.1rem; border-top: 1px solid var(--edge); }
+button.toggle.primary { color: var(--cyan); background: rgba(56, 225, 196, 0.14); border-color: rgba(56, 225, 196, 0.5); }
+.news-entry { border-bottom: 1px solid var(--edge); padding: 0.7rem 0; }
+.news-entry:last-child { border-bottom: 0; }
+.news-entry summary { cursor: pointer; display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; list-style: none; }
+.news-entry summary::-webkit-details-marker { display: none; }
+.news-entry summary::before { content: "›"; color: var(--dim); transition: transform 0.15s; display: inline-block; }
+.news-entry[open] summary::before { transform: rotate(90deg); }
+.news-version { font-family: var(--mono); font-size: 0.72rem; color: var(--cyan); }
+.news-date { font-size: 0.8rem; margin-left: auto; }
+.news-entry ul { margin: 0.6rem 0 0; padding-left: 1.3rem; color: var(--dim); font-size: 0.9rem; }
+.news-entry li { margin: 0.45rem 0; max-width: 68ch; }
+.news-entry .go { font-size: 0.82rem; margin-top: 0.2rem; }
+@media (prefers-reduced-motion: reduce) {
+  dialog.news[open] { animation: none; }
+  .news-entry summary::before { transition: none; }
+}

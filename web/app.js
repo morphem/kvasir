@@ -1912,7 +1912,120 @@ scatter.addEventListener("focusin", (event) => {
 scatter.addEventListener("pointerleave", hideTip);
 scatter.addEventListener("focusout", hideTip);
 
+/* ---------- what's new, and the changelog ----------
+
+   The changelog is data (kvasir/changelog.py, served at /api/changelog) and its newest entry
+   is the app's version. The browser remembers the last version it showed — in localStorage,
+   no cookie, nothing sent anywhere — and a returning visitor who has not seen the current one
+   gets "What's new since your last visit" once. A first visit is not a return: it records the
+   version silently, because everything on the page is new to them anyway.
+
+   "Returning" is read before the first render, since rendering stores the open tab. */
+const SEEN_KEY = "kvasir.seen";
+const RETURNING = [SEEN_KEY, TIER_STORAGE_KEY, PATIENCE_STORAGE_KEY, PANEL_STORAGE_KEY, "kvasir.map"].some(
+  (key) => stored(key) !== null
+);
+const UNKNOWN_SINCE_DAYS = 14;
+
+function whereLabel(where) {
+  const panel = PANELS.find((p) => p.id === where.panel);
+  const chart = where.panel === "map" && where.map && MAPS[where.map] ? ` — ${MAPS[where.map].tab}` : "";
+  return panel ? `Open ${panel.label}${chart}` : "";
+}
+
+function newsEntry(entry, open) {
+  const items = entry.items
+    .map((item) => {
+      const go = item.where
+        ? `<button class="text-link go" type="button" data-panel="${escapeHtml(item.where.panel)}"
+             data-map="${escapeHtml(item.where.map || "")}">${escapeHtml(whereLabel(item.where))}</button>`
+        : "";
+      return `<li>${escapeHtml(item.text)}${go ? `<br>${go}` : ""}</li>`;
+    })
+    .join("");
+  const date = new Date(entry.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return `<details class="news-entry" ${open ? "open" : ""}>
+    <summary><span class="news-version">v${escapeHtml(entry.version)}</span>
+      <b>${escapeHtml(entry.title)}</b><span class="dim news-date">${date}</span></summary>
+    <ul>${items}</ul>
+  </details>`;
+}
+
+function openNews(mode) {
+  const news = state.news;
+  const dialog = $("#news");
+  if (!news || !dialog) return;
+  const entries = news.entries;
+  let shown = entries;
+  let kicker = `Version ${news.version}`;
+  let title = "Changelog";
+  if (mode === "since") {
+    const seen = stored(SEEN_KEY);
+    const at = entries.findIndex((e) => e.version === seen);
+    if (at > 0) {
+      shown = entries.slice(0, at);
+      kicker = `Since your last visit · v${seen} → v${news.version}`;
+    } else {
+      const newest = new Date(entries[0].date).getTime();
+      shown = entries.filter((e) => newest - new Date(e.date).getTime() <= UNKNOWN_SINCE_DAYS * 86400000);
+      kicker = `The last two weeks · now v${news.version}`;
+    }
+    title = "What's new";
+  }
+  $("#news-kicker").textContent = kicker;
+  $("#news-title").textContent = title;
+  $("#news-body").innerHTML = shown.map((entry, i) => newsEntry(entry, mode === "since" || i === 0)).join("");
+  $("#news-all").hidden = mode !== "since" || shown.length === entries.length;
+  $("#news-body").querySelectorAll(".go").forEach((button) => {
+    button.addEventListener("click", () => {
+      dialog.close();
+      if (button.dataset.map && MAPS[button.dataset.map]) {
+        state.map = button.dataset.map;
+        store("kvasir.map", state.map);
+        renderMapTabs();
+        renderMap(state.view);
+      }
+      showPanel(button.dataset.panel, { scroll: true });
+      $("#section-tabs").scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    });
+  });
+  if (!dialog.open) dialog.showModal();
+}
+
+async function loadNews() {
+  try {
+    const response = await fetch("/api/changelog", { cache: "no-store" });
+    state.news = await response.json();
+  } catch {
+    return; // the page works without it; the button simply stays hidden
+  }
+  const button = $("#version-link");
+  button.textContent = `v${state.news.version} · What's new`;
+  button.hidden = false;
+  const seen = stored(SEEN_KEY);
+  if (seen === state.news.version) return;
+  if (!RETURNING) {
+    store(SEEN_KEY, state.news.version);
+    return;
+  }
+  openNews("since");
+}
+
+// Whichever way it closes — the button, Esc, the ×, a click on the backdrop — the current
+// version counts as seen.
+$("#news").addEventListener("close", () => {
+  if (state.news) store(SEEN_KEY, state.news.version);
+});
+$("#news").addEventListener("click", (event) => {
+  if (event.target === event.currentTarget) event.currentTarget.close();
+});
+$("#news-close").addEventListener("click", () => $("#news").close());
+$("#news-ok").addEventListener("click", () => $("#news").close());
+$("#news-all").addEventListener("click", () => openNews("all"));
+$("#version-link").addEventListener("click", () => openNews("all"));
+$("#changelog-link").addEventListener("click", () => openNews("all"));
+
 // The one orchestrated moment is the first paint: the three waits run against each other.
 // The five-minute refresh redraws quietly.
-load({ animate: true });
+load({ animate: true }).then(loadNews);
 setInterval(load, 5 * 60 * 1000);

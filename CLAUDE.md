@@ -128,6 +128,14 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   worker). One model at three efforts is allowed — on the September data Opus 5.5 leads at every
   price from $0.55 up, and effort is the dial between the roles. When the plan stops short it records `stopped_because`: an unspent tier is either a
   finding or a fault, and the difference is the reason printed next to it.
+- **Every deploy a user can see adds a changelog entry — that is the version bump.**
+  `kvasir/changelog.py` is the single source: `VERSION` is its newest entry, `/api/changelog`
+  serves it, and the page compares it with the last version the browser showed
+  (`localStorage["kvasir.seen"]`) to open "What's new" once for a returning visitor. No entry, no
+  popup — so write one for anything that changes what the page shows or says, in English, for the
+  people who use the page, with `where` pointing at the tab (and map chart) it lives on. Internals
+  stay in the commit log. A first visit records the version silently; a visitor from before the
+  changelog existed sees the last two weeks.
 - **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
   the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
 
@@ -165,5 +173,6 @@ docker build -t kvasir . && docker run -p 8688:8688 -v $PWD/data:/data kvasir
 | `kvasir/recommend.py` | The board: joins the three sources, availability, the value ladder, the gaps between roles, the drift-freshness check, and the archived decision. |
 | `kvasir/budget.py` | The roles: one plan per tier × patience — shares, ladder walks, drift veto, patience, surplus walk, stop reasons. Every constant is echoed into the API response. |
 | `kvasir/catalog.py` | The task list and the three roles — English copy, see the language note above. |
-| `kvasir/api.py` | One payload (`/api/view`) for the whole page, plus `/api/history` and `/api/drift` over the archive. |
+| `kvasir/api.py` | One payload (`/api/view`) for the whole page, plus `/api/history` and `/api/drift` over the archive, and `/api/changelog`. |
+| `kvasir/changelog.py` | What changed, release by release, in the page's words — and the app's version. |
 | `web/` | The page: `index.html` skeleton, `app.js` rendering, `style.css` in BlinkNeuron colours (cyan = it fits, violet = it is a gap — semantic, never decorative). |
