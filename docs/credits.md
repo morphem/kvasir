@@ -94,51 +94,58 @@ were not re-derived — treat that as an open question, not as a tuned result.
 Both per-point ceilings are the same thresholds the value ladder shows on the page, so nothing here
 is a private knob.
 
-## What that produces for these tiers (data of 2026-09-22, Balanced patience)
+## What that produces for these tiers (data of 2026-09-24, Balanced patience)
 
 | Tier | Architect | Worker | Scout | Month | Used |
 |---|---|---|---|---|---|
-| **Basic** 13K | Opus 5.5 · Extra High | Opus 5.5 · Low | GPT-5.6 Terra · High | ~10,960 cr ≈ $110 | **84%** |
+| **Basic** 13K | Opus 5.5 · Extra High | GPT-6 Sol · Extra High | GPT-6 Sol · High | ~11,040 cr ≈ $110 | **85%** |
 | **Heavy** 100K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **30%** |
 | **Power** 200K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **15%** |
 
-At **Any** patience, Basic's scout becomes GPT-5.6 Luna · Max (18 credits, but 116 s before it
-answers) and Heavy/Power buy Opus 5.5 · Extra High for the worker (~44,300 cr). At **Fast**, Heavy's
-scout drops to Opus 5.5 · Low (~25,100 cr).
+At **Any** patience Basic is unchanged, and Heavy/Power buy Opus 5.5 · Extra High for the worker and
+Opus 5.5 · High for the scout (~44,300 cr). At **Fast**, Basic runs GPT-6 Sol · High in both loop
+roles (~9,900 cr, 76%) — one model, one answer.
 
 Four conclusions worth arguing about at work:
 
-1. **Opus 5.5 leads at every price from $0.55 a task up.** On Artificial Analysis's frontier it holds
-   every rung from Low to Max, so on a roomy tier all three roles are Opus 5.5 at three efforts.
-   That is the data, not a collapsed board: effort is the dial between the roles.
-2. **Basic is enough for the average engineer.** The merit-only shortlist costs ~29,600 credits
-   (228% of Basic), so at Basic the budget picks the models — and it still plans on Opus 5.5 for
-   the architect and the worker.
-3. **Heavy and Power stop at 15–30% because of the wait, not the money.** The next step up is
-   Opus 5.5 · Extra High, which thinks for 170 s before it answers; Balanced patience will not put
-   that on a role you wait on all day. Choose Any and the tier is spent further; the plan says which
-   rule stopped it next to the number.
-4. **GPT-6 Luna and GPT-6 Sol are not in this table yet.** Artificial Analysis scored and timed them
-   on release day (22 September) but has not priced them; they join the roles by themselves when it
-   does. On score they sit where GPT-5.6 Luna and Sol do (Luna · Max 37.3 both; Sol · Max 47.5 vs
-   47.0), at about half of Copilot's per-token price.
+1. **GPT-6 took the cheap half of the board.** Artificial Analysis priced GPT-6 Luna and Sol on
+   23 September, a day after release. From half a cent to about a dollar a task the value frontier
+   is now GPT-6 Luna, then GPT-6 Sol; only two GPT-5.6 Luna rungs survive, and Opus 5.5 · Low fell
+   off it (GPT-6 Sol · High scores more for less). **Opus 5.5 leads from $1.34 a task up** —
+   Medium through Max.
+2. **Basic is enough for the average engineer, and now runs on GPT-6 Sol.** The merit-only
+   shortlist costs ~29,600 credits (228% of Basic), so the budget picks the loop roles: GPT-6 Sol
+   at Extra High and High. The worker scores a little more than Opus 5.5 · Low did on 22 September
+   (44.1 against 42.3) for about the same credits — but you wait 45 s for its first answer instead
+   of 7. At Fast patience it drops to GPT-6 Sol · High, 8 s.
+3. **Heavy and Power stop at 30% and 15% because of the wait, not the money.** The next step up is
+   Opus 5.5 · Extra High, which thinks for about 150 s before it answers; Balanced patience will not
+   put that on a role you wait on all day. The plan says so next to the number.
+4. **Waiting times are medians, and they move.** Opus 5.5 · High measured 12.7 s on 22 September
+   and 30.4 s on 24 September. A pick that sits near a patience ceiling can flip from one reading
+   to the next without any price or score changing — that is the rule working, not noise, but it
+   is worth knowing before reading a change in the verdict as news.
 
 ## The Luna effort question
 
-Asked in August on CursorBench: is dropping GPT-5.6 Luna to a lower effort worth the saving? On
-Artificial Analysis the answer turns on the wait rather than the credits:
+Asked in August on CursorBench: is dropping Luna to a lower effort worth the saving? On Artificial
+Analysis the answer turns on the wait rather than the credits — and GPT-6 Luna answers it better
+than GPT-5.6 Luna at almost every effort:
 
-| Luna effort | $/task | Credits/task | Intelligence | Wait to first answer |
-|---|---|---|---|---|
-| Max | $0.18 | 18 | 37.3 | 116 s |
-| Extra High | $0.09 | 9 | 34.6 | 40 s |
-| High | $0.04 | 4 | 32.1 | 15 s |
-| Medium | $0.02 | 2 | 25.0 | 2.6 s |
-| Low | $0.01 | 1 | 21.0 | 1.7 s |
+| Effort | GPT-5.6 Luna | GPT-6 Luna |
+|---|---|---|
+| Max | 17.8 cr · 37.3 · 114 s | 6.8 cr · 37.3 · 104 s |
+| Extra High | 8.5 cr · 34.6 · 43 s | 4.2 cr · 33.9 · 17 s |
+| High | 4.4 cr · 32.1 · 13 s | 2.9 cr · 32.1 · 7 s |
+| Medium | 1.6 cr · 25.0 · 2.6 s | 1.7 cr · 29.5 · 5.3 s |
+| Low | 1.0 cr · 21.0 · 1.7 s | 0.4 cr · 20.9 · 2.1 s |
 
-Every effort is cheap next to any tier — the whole scout load at Max is about 1,000 credits a
-month. What Max costs is two minutes of silence per request. For a role you wait on repeatedly,
-**High** (15 s, 32.1) is the sensible Luna; Max belongs to a batch you do not sit and watch.
+*Credits per task · Intelligence Index · wait to the first answer, 2026-09-24.*
+
+Every effort is cheap next to any tier — the whole scout load on GPT-6 Luna · Max is under 400
+credits a month. What Max costs is nearly two minutes of silence per request. For a role you wait
+on repeatedly, **GPT-6 Luna · High** (32.1, 3 credits, 7 s) is the sensible Luna; Max belongs to a
+batch you do not sit and watch.
 
 ## Tuning it for a different profile
 
