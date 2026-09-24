@@ -175,4 +175,4 @@ docker build -t kvasir . && docker run -p 8688:8688 -v $PWD/data:/data kvasir
 | `kvasir/catalog.py` | The task list and the three roles — English copy, see the language note above. |
 | `kvasir/api.py` | One payload (`/api/view`) for the whole page, plus `/api/history` and `/api/drift` over the archive, and `/api/changelog`. |
 | `kvasir/changelog.py` | What changed, release by release, in the page's words — and the app's version. |
-| `web/` | The page: `index.html` skeleton, `app.js` rendering, `style.css` in BlinkNeuron colours (cyan = it fits, violet = it is a gap — semantic, never decorative). |
+| `web/` | The page: `index.html` skeleton, `app.js` rendering, `style.css` in BlinkNeuron colours (cyan = it fits, violet = it is a gap — semantic, never decorative). Two faces, dark and light, switched the blinkneuron.eu way (`bn.theme`, `data-theme`, system preference until chosen, applied before first paint). Every colour is a token on `:root` — never a hex literal in `app.js`, where it would stay dark on white; SVG takes tokens through `style=""`, since presentation attributes cannot hold `var()`. |

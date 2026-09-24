@@ -17,6 +17,22 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.3",
+        "date": "2026-09-24",
+        "title": "A light face",
+        "items": [
+            {
+                "text": "Kvasir now has a light theme — cool paper, white panels, the same two accents "
+                "darkened so cyan still means it lines up and violet still means a gap. The moon / sun "
+                "button next to the BlinkNeuron name at the top left switches between them.",
+            },
+            {
+                "text": "Until you choose, the page follows your system's light or dark setting, on a "
+                "phone as on a computer. Your choice is remembered in your browser, like the tier.",
+            },
+        ],
+    },
+    {
         "version": "2.2",
         "date": "2026-09-24",
         "title": "What's new, and the changelog",

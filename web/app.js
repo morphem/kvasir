@@ -36,7 +36,10 @@ const state = {
 
 /* Family line colours, in activation order. The frontier stays dashed grey-cyan, so even
    the first hue reads as a different kind of line; three is where distinct hues run out. */
-const FAMILY_HUES = ["#38e1c4", "#7c5cff", "#f5b544"];
+// Colours are the stylesheet's tokens, never hex here: the page has a light and a dark face,
+// and a literal would stay dark on white. SVG takes them through style="", because a CSS
+// variable is not allowed in a presentation attribute.
+const FAMILY_HUES = ["var(--cyan)", "var(--violet)", "var(--amber)"];
 const MAX_FAMILIES = FAMILY_HUES.length;
 
 function familyHue(key) {
@@ -223,7 +226,7 @@ function renderFamilyPicker(view) {
         return `<button class="family-chip" data-key="${escapeHtml(family.key)}"
             aria-pressed="${active}" ${blocked ? "disabled" : ""}
             ${active && hue ? `style="border-color:${hue};color:${hue}"` : ""}>
-          <i style="background:${hue || "#3a4257"}"></i>${escapeHtml(family.name)}
+          <i style="background:${hue || "var(--dot)"}"></i>${escapeHtml(family.name)}
           <b class="dim" style="font-weight:400">${family.variants.length}</b>
         </button>`;
       })
@@ -768,7 +771,7 @@ function renderGaps(gaps) {
   const box = $("#gaps");
   box.innerHTML = "";
   gaps.forEach((gap) => {
-    const colour = gap.verdict === "bargain" ? "#38e1c4" : gap.verdict === "steep" ? "#7c5cff" : "#8b97a8";
+    const colour = gap.verdict === "bargain" ? "var(--cyan)" : gap.verdict === "steep" ? "var(--violet)" : "var(--dim)";
     const message =
       gap.verdict === "bargain"
         ? "The surcharge is token next to the quality gained — take the dearer one, even for simple work."
@@ -779,13 +782,13 @@ function renderGaps(gaps) {
       tag(`<div class="gap">
         <h3>${escapeHtml(gap.from)} → ${escapeHtml(gap.to)}</h3>
         <svg viewBox="0 0 400 74" aria-hidden="true">
-          <line x1="24" y1="30" x2="376" y2="30" stroke="#222a3d" stroke-width="2"/>
-          <line x1="24" y1="30" x2="376" y2="30" stroke="${colour}" stroke-width="3" stroke-dasharray="4 5"/>
-          <circle cx="24" cy="30" r="7" fill="#141926" stroke="${colour}" stroke-width="2.5"/>
-          <circle cx="376" cy="30" r="7" fill="${colour}"/>
-          <text x="24" y="58" fill="#8b97a8" font-size="12" font-family="ui-monospace,monospace">${escapeHtml(gap.from_label)}</text>
-          <text x="376" y="58" fill="#e8ecf1" font-size="12" font-family="ui-monospace,monospace" text-anchor="end">${escapeHtml(gap.to_label)}</text>
-          <text x="200" y="18" fill="${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pts · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
+          <line x1="24" y1="30" x2="376" y2="30" style="stroke:var(--edge)" stroke-width="2"/>
+          <line x1="24" y1="30" x2="376" y2="30" style="stroke:${colour}" stroke-width="3" stroke-dasharray="4 5"/>
+          <circle cx="24" cy="30" r="7" style="fill:var(--raise);stroke:${colour}" stroke-width="2.5"/>
+          <circle cx="376" cy="30" r="7" style="fill:${colour}"/>
+          <text x="24" y="58" style="fill:var(--dim)" font-size="12" font-family="ui-monospace,monospace">${escapeHtml(gap.from_label)}</text>
+          <text x="376" y="58" style="fill:var(--text)" font-size="12" font-family="ui-monospace,monospace" text-anchor="end">${escapeHtml(gap.to_label)}</text>
+          <text x="200" y="18" style="fill:${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pts · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
         </svg>
         <p class="verdict-line"><b class="mono" style="color:${colour}">${usd(gap.usd_per_pp)} per point</b> — ${escapeHtml(message)}</p>
       </div>`)
@@ -1046,7 +1049,7 @@ function renderMap(view) {
       .map((v) => ({ v, x: map.x(v) }))
       .filter((p) => p.x !== null && p.x !== undefined)
       .map((p) => `${sx(p.x)},${sy(p.v.score)}`);
-    if (path.length > 1) parts.push(`<polyline points="${path.join(" ")}" fill="none" stroke="${hue}" stroke-width="2" opacity=".85"/>`);
+    if (path.length > 1) parts.push(`<polyline points="${path.join(" ")}" fill="none" style="stroke:${hue}" stroke-width="2" opacity=".85"/>`);
   });
   svg.querySelectorAll(":scope > :not(g.pts)").forEach((el) => el.remove());
   svg.insertAdjacentHTML("afterbegin", parts.join(""));
@@ -1066,7 +1069,7 @@ function renderMap(view) {
     if (slot.pick) picks[candidateId(slot.pick)] = role;
   });
   const onFront = new Set(front.map((p) => p.id));
-  const colour = { architect: "#7c5cff", worker: "#38e1c4", scout: "#8b97a8" };
+  const colour = { architect: "var(--violet)", worker: "var(--cyan)", scout: "var(--dim)" };
 
   // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
   // not print over each other; a dot without a label still answers to hover.
@@ -1113,22 +1116,24 @@ function renderMap(view) {
       g.dataset.id = p.id;
       layer.append(g);
     }
-    const fill = p.ghost ? "none" : hue || (role ? colour[role] : "#3a4257");
+    const fill = p.ghost ? "none" : hue || (role ? colour[role] : "var(--dot)");
     const radius = role ? 7 : p.ghost ? 4 : hue ? 6 : 4.5;
     const floor = !p.ghost && state.map === "time" && p.c.speed && p.c.speed.task_minutes_floor_from;
     let label = "";
     if (role) {
       const t = labelFor(p, p.c.label, true);
-      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label pick" fill="${colour[role]}">${escapeHtml(p.c.label)}</text>`;
+      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label pick" style="fill:${colour[role]}">${escapeHtml(p.c.label)}</text>`;
     } else if (!p.ghost && (onFront.has(p.id) || hue)) {
       const text = hue ? p.c.effort_label : p.c.label;
       const t = labelFor(p, text, false);
-      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label" ${hue ? `fill="${hue}"` : ""}>${escapeHtml(text)}</text>`;
+      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label" ${hue ? `style="fill:${hue}"` : ""}>${escapeHtml(text)}</text>`;
     }
     g.innerHTML = `
-      <circle r="${radius}" fill="${floor ? "none" : fill}" class="${p.ghost ? "ghost" : role || hue ? "ring" : "dot"}"
-        ${floor ? `stroke="${hue || (role ? colour[role] : "#8b97a8")}" stroke-width="2" stroke-dasharray="2 2"` : ""}/>
-      ${selected ? `<circle r="${radius + 3.5}" fill="none" stroke="#e8ecf1" stroke-width="1.8" pointer-events="none"/>` : ""}
+      <circle r="${radius}" style="fill:${floor ? "none" : fill}${
+        floor ? `;stroke:${hue || (role ? colour[role] : "var(--dim)")}` : ""
+      }" class="${p.ghost ? "ghost" : role || hue ? "ring" : "dot"}"
+        ${floor ? `stroke-width="2" stroke-dasharray="2 2"` : ""}/>
+      ${selected ? `<circle r="${radius + 3.5}" fill="none" style="stroke:var(--text)" stroke-width="1.8" pointer-events="none"/>` : ""}
       ${label}
       <circle class="hit" r="11" fill="transparent" ${p.ghost ? "" : `data-id="${escapeHtml(p.id)}" tabindex="0" role="button"`}
         aria-label="${escapeHtml(`${p.c.label}: ${idx(p.score)}, ${map.fmt(p.x)}`)}"/>`;
@@ -1516,10 +1521,10 @@ function sparkline(points, delta) {
     })
     .map((value, i) => `${sx(i).toFixed(1)},${sy(value).toFixed(1)}`)
     .join(" ");
-  const colour = delta === null || delta === undefined ? "#8b97a8" : delta < 0 ? "#7c5cff" : "#38e1c4";
+  const colour = delta === null || delta === undefined ? "var(--dim)" : delta < 0 ? "var(--violet)" : "var(--cyan)";
   return `<svg viewBox="0 0 ${W} ${H}" style="width:132px;height:30px">
-    <polyline points="${raw}" fill="none" stroke="#3a4257" stroke-width="1"/>
-    <polyline points="${smooth}" fill="none" stroke="${colour}" stroke-width="2"/>
+    <polyline points="${raw}" fill="none" style="stroke:var(--dot)" stroke-width="1"/>
+    <polyline points="${smooth}" fill="none" style="stroke:${colour}" stroke-width="2"/>
   </svg>`;
 }
 
@@ -1911,6 +1916,45 @@ scatter.addEventListener("focusin", (event) => {
 });
 scatter.addEventListener("pointerleave", hideTip);
 scatter.addEventListener("focusout", hideTip);
+
+/* ---------- light and dark ----------
+
+   The brand's own switch (blinkneuron.eu): the stored choice wins, otherwise the system
+   setting does, and the button offers the other one — a moon on the light face, a sun on the
+   dark. The stylesheet does the painting; this only records the choice and keeps the button's
+   label and the browser's theme colour honest. The button stays hidden without JavaScript,
+   where it could do nothing. */
+const THEME_KEY = "bn.theme";
+const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
+
+function activeTheme() {
+  const chosen = stored(THEME_KEY);
+  return chosen === "light" || chosen === "dark" ? chosen : prefersDark.matches ? "dark" : "light";
+}
+
+function paintTheme() {
+  const theme = activeTheme();
+  const button = $("#theme");
+  button.hidden = false;
+  button.dataset.effective = theme;
+  button.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
+  button.title = button.getAttribute("aria-label");
+  $('meta[name="theme-color"]').content = theme === "dark" ? "#0b0e14" : "#fbfbfd";
+}
+
+$("#theme").addEventListener("click", () => {
+  const next = activeTheme() === "dark" ? "light" : "dark";
+  const apply = () => {
+    document.documentElement.dataset.theme = next;
+    store(THEME_KEY, next);
+    paintTheme();
+  };
+  // The same cross-fade the tier switch uses, so the page changes face in one breath.
+  if (document.startViewTransition && !reducedMotion()) document.startViewTransition(apply);
+  else apply();
+});
+prefersDark.addEventListener("change", paintTheme);
+paintTheme();
 
 /* ---------- what's new, and the changelog ----------
 

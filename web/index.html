@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kvasir — which agent to start</title>
 <meta name="description" content="Which AI agent to start for a task, against your GitHub Copilot AI-credit tier: quality, cost and waiting time per effort (Artificial Analysis), quality drift (AI Stupid Level) and Copilot pricing in one place.">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#0b0e14">
+<!-- Applied before the first paint, so a stored theme never flashes the other one. Same key and
+     same rule as blinkneuron.eu: an explicit choice wins, otherwise the system setting does. -->
+<script>try{var t=localStorage.getItem('bn.theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -14,7 +18,20 @@
 
   <header class="topbar">
     <div class="identity">
-      <div class="wordmark"><span>blink</span><b>neuron</b></div>
+      <div class="wordmark-row">
+        <div class="wordmark"><span>blink</span><b>neuron</b></div>
+        <button type="button" class="theme-btn" id="theme" aria-label="Switch theme" hidden>
+          <svg class="i-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <path fill="currentColor" d="M20.7 14.2A8.6 8.6 0 0 1 9.8 3.3a.8.8 0 0 0-1.1-.9 9.9 9.9 0 1 0 12.9 12.9.8.8 0 0 0-.9-1.1Z"/>
+          </svg>
+          <svg class="i-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" fill="currentColor"/>
+            <g stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+              <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/>
+            </g>
+          </svg>
+        </button>
+      </div>
       <h1><span class="gloss" tabindex="0" role="note" aria-describedby="kvasir-myth">Kvasir<span class="gloss-mark">?</span>
         <span class="gloss-card" id="kvasir-myth">
           <b>Kvasir</b> — in Norse myth, a being made out of the mixed knowledge of two warring
@@ -71,10 +88,10 @@
       <div class="map-key">
         <span><i class="key-quadrant"></i> Most attractive quadrant</span>
         <span><i class="key-pareto"></i> Pareto line</span>
-        <span><i style="background:#7c5cff"></i> Architect</span>
-        <span><i style="background:#38e1c4"></i> Worker</span>
-        <span><i style="background:#8b97a8"></i> Scout</span>
-        <span><i style="background:#3a4257"></i> other models we can start</span>
+        <span><i style="background:var(--violet)"></i> Architect</span>
+        <span><i style="background:var(--cyan)"></i> Worker</span>
+        <span><i style="background:var(--dim)"></i> Scout</span>
+        <span><i style="background:var(--dot)"></i> other models we can start</span>
         <span id="key-market" hidden><i class="key-ghost"></i> not available to us</span>
       </div>
       <div class="family-picker" id="family-picker"></div>
