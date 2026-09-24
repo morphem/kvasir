@@ -28,7 +28,7 @@
     <div class="topbar-right">
       <div class="eyebrow">Organisation AI credits tier</div>
       <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
-      <div class="eyebrow" style="margin-top:.9rem">How long you will wait</div>
+      <div class="eyebrow" style="margin-top:.9rem">How long one loop may take</div>
       <div class="tier-tabs" id="patience-tabs" role="tablist" aria-label="Patience"></div>
       <p id="tier-note"></p>
     </div>
@@ -53,6 +53,38 @@
   </section>
 
   <nav class="tabs" id="section-tabs" role="tablist" aria-label="Sections"></nav>
+
+  <section data-panel="map">
+    <div class="section-head">
+      <div>
+        <div class="eyebrow">Where to use what</div>
+        <h2 id="map-title">Intelligence against cost per task</h2>
+        <p class="dim" id="map-sub" style="margin:.5rem 0 0;max-width:74ch"></p>
+      </div>
+      <div class="controls">
+        <button class="toggle" id="toggle-market" aria-pressed="false">Show the rest of the market</button>
+      </div>
+    </div>
+    <div class="map-tabs" id="map-tabs" role="tablist" aria-label="Chart"></div>
+    <div class="chart-box">
+      <div class="map-key">
+        <span><i class="key-quadrant"></i> Most attractive quadrant</span>
+        <span><i class="key-pareto"></i> Pareto line</span>
+        <span><i style="background:#7c5cff"></i> Architect</span>
+        <span><i style="background:#38e1c4"></i> Worker</span>
+        <span><i style="background:#8b97a8"></i> Scout</span>
+        <span><i style="background:#3a4257"></i> other models we can start</span>
+        <span id="key-market" hidden><i class="key-ghost"></i> not available to us</span>
+      </div>
+      <div class="family-picker" id="family-picker"></div>
+      <div class="scatter-wrap">
+        <svg id="scatter" viewBox="0 0 1000 520" role="img" aria-label="Intelligence against the selected measure"></svg>
+        <div class="tip" id="scatter-tip" hidden></div>
+      </div>
+    </div>
+    <p class="note" id="unpriced-note" hidden></p>
+    <div class="chart-detail" id="chart-detail" hidden></div>
+  </section>
 
   <section id="budget-section" data-panel="budget">
     <div class="eyebrow">A month on this tier</div>
@@ -92,7 +124,7 @@
       <table id="tasks">
         <thead><tr>
           <th>Task</th><th>Role</th><th>Start with</th>
-          <th class="num">Intelligence</th><th class="num">You wait</th><th class="num">Credits / task</th>
+          <th class="num">Intelligence</th><th class="num">Min / task</th><th class="num">Credits / task</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -103,32 +135,16 @@
     <div class="section-head">
       <div>
         <div class="eyebrow">Cost vs quality</div>
-        <h2>Where the value sits</h2>
+        <h2>The value ladder</h2>
         <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-          Every dot is a model at one effort level: what one Intelligence Index task costs across (log
-          scale), the index score up. The line joins the models nothing else beats on price and score
-          at the same time. Hover a dot to read it; click it to see every effort level it comes in.
+          The cost frontier from the map, rung by rung: what each next point of Intelligence costs.
+          Click a rung to open it on the map.
         </p>
       </div>
       <div class="controls">
         <button class="toggle" id="toggle-ladder" aria-pressed="false">Show every variant</button>
       </div>
     </div>
-    <div class="chart-box">
-      <div class="family-picker" id="family-picker"></div>
-      <div class="scatter-wrap">
-        <svg id="scatter" viewBox="0 0 1000 470" role="img" aria-label="Cost against score"></svg>
-        <div class="tip" id="scatter-tip" hidden></div>
-      </div>
-      <div class="legend">
-        <span><i style="background:#7c5cff"></i> Architect</span>
-        <span><i style="background:#38e1c4"></i> Worker</span>
-        <span><i style="background:#8b97a8"></i> Scout</span>
-        <span><i style="background:#3a4257"></i> everything else — click any dot</span>
-      </div>
-    </div>
-    <p class="note" id="unpriced-note" hidden></p>
-    <div class="chart-detail" id="chart-detail" hidden></div>
     <div class="ladder" id="ladder"></div>
   </section>
 
@@ -162,15 +178,15 @@
     <div class="section-head">
       <div>
         <div class="eyebrow">Every model we can start</div>
-        <h2>Score, price and the wait, per effort</h2>
+        <h2>Score, price and time, per effort</h2>
         <p class="dim" style="margin:.5rem 0 0;max-width:74ch">
-          The same model is a different tool at a different effort: Opus 5.5 starts answering in
-          13 seconds at high and takes nearly three minutes at extra high. Scores and prices never
-          say that, and it is the thing you actually live with. Filter by the wait you will accept,
-          or sort any column.
+          The same model is a different tool at a different effort: Opus 5.5 finishes a task in
+          about a minute at low and seven and a half at extra high. You iterate with the worker and
+          the scout, so the length of one loop is the length of the job. Filter by the minutes per
+          task you will accept, or sort any column.
         </p>
       </div>
-      <div class="controls" id="wait-filter" role="group" aria-label="Longest wait"></div>
+      <div class="controls" id="wait-filter" role="group" aria-label="Longest time per task"></div>
     </div>
     <div class="table-scroll">
       <table id="models">
@@ -179,8 +195,9 @@
           <th class="num" title="Artificial Analysis Intelligence Index">Intelligence</th>
           <th class="num" title="Terminal-Bench 4.0, agentic coding in a terminal — shown for comparison, never used to decide">Coding</th>
           <th class="num" title="AI credits for one Intelligence Index task">Credits / task</th>
-          <th class="num" title="Seconds to the first answer token, thinking time included">You wait</th>
+          <th class="num" title="Minutes one Intelligence Index task takes, reasoning included — the length of one loop">Min / task</th>
           <th data-nosort></th>
+          <th class="num" title="Seconds to the first answer token, thinking time included">First answer</th>
           <th class="num" title="Output tokens per second">Types</th>
           <th class="num" title="AI Stupid Level score, measured at the provider's default effort">Drift</th>
           <th class="num" title="Copilot price per million input / output tokens">Copilot $ / 1M</th>

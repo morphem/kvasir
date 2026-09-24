@@ -8,7 +8,8 @@ Independent evaluation on their own hardware. For every model **at every effort 
 publishes the **Intelligence Index** (ten evaluations: AA-Briefcase, GDPval-AA, AutomationBench-AA,
 Terminal-Bench 4.0, SciCode, Humanity's Last Exam, GDP-PDF, CritPt, AA-Omniscience and long-context
 reasoning — v4.3 in September 2026), the **cost of one index task**, the output tokens it took, how
-fast the model types and **how long you wait before the first answer token**. Quality, price and
+fast the model types, **how long one task takes** and how long you wait before the first answer
+token. Quality, price and
 time from the same runs — which is why this is the source the board is scored by, since
 2026-09-22.
 
@@ -35,8 +36,10 @@ What each field means, and how it is used:
 | Field | Their words | Used as |
 |---|---|---|
 | `intelligenceIndex` | "Artificial Analysis Intelligence Index" | the score; decides the roles |
-| `intelligenceIndexCostPerTask.cost.total` | "Weighted average cost (USD) per Intelligence Index task" | the price of a task; the credit budget |
-| `timeToFirstAnswerToken.total` | "Seconds to first answer token received · Accounts for reasoning model 'thinking' time" | the wait; patience filters the loop roles by it |
+| `intelligenceIndexCostPerTask.cost.total` | "Weighted average cost (USD) per Intelligence Index task" | the price of a task; the credit budget and the cost map |
+| `intelligenceIndexOutputTokensPerTask.output` | "Weighted average number of output tokens used to run one task" | the tokens map; shown, never decides |
+| `intelligenceIndexTimePerTask` | "Weighted average decode time per task; excludes TTFT and overhead time" (seconds in the record, minutes on their chart) | the length of one loop; patience filters the loop roles by it, and the time map plots it |
+| `timeToFirstAnswerToken.total` | "Seconds to first answer token received · Accounts for reasoning model 'thinking' time" | when a loop starts; shown, never decides |
 | `timescaleData.medianOutputSpeed` | "Output tokens per second" | how fast it types; shown, never decides |
 | `endToEndResponseTime.total` | "Seconds to output 500 tokens, including reasoning model 'thinking' time" | one exchange; shown |
 | `terminalBench40` | Terminal-Bench 4.0 | a coding cross-check; shown, never decides |

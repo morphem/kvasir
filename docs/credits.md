@@ -85,8 +85,10 @@ were not re-derived — treat that as an open question, not as a tuned result.
 - **Scout** — climbs only while a step is a **bargain (≤ $0.15 per point)**. Mechanical work does
   not repay more.
 - **Patience** — the worker and the scout only climb a frontier rebuilt from the variants that
-  answer inside the selected wait: **Fast** 30 s / 10 s, **Balanced** 90 s / 30 s, **Any** no limit
-  (worker / scout, seconds to the first answer token). A variant nobody has timed passes.
+  finish a task inside the selected time: **Fast** 3 / 1.5 minutes, **Balanced** 6 / 3, **Any** no
+  limit (worker / scout, Artificial Analysis's time per index task). These are the roles you iterate
+  with, so the length of one loop is the length of the job. A variant nobody timed passes, unless a
+  lower effort of the same model already takes longer — then it is held to that time.
 - **Surplus** — once the economical picks are in, the plan spends the tier up to 80%, architect
   first, and never past 90%. A lower role may not score more, or cost more per task, than the role
   above it, and may not land on another role's exact variant.
@@ -99,12 +101,14 @@ is a private knob.
 | Tier | Architect | Worker | Scout | Month | Used |
 |---|---|---|---|---|---|
 | **Basic** 13K | Opus 5.5 · Extra High | GPT-6 Sol · Extra High | GPT-6 Sol · High | ~11,040 cr ≈ $110 | **85%** |
-| **Heavy** 100K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **30%** |
-| **Power** 200K | Opus 5.5 · Max | Opus 5.5 · High | Opus 5.5 · Medium | ~29,600 cr ≈ $296 | **15%** |
+| **Heavy** 100K | Opus 5.5 · Max | Opus 5.5 · High | GPT-6 Sol · Extra High | ~24,960 cr ≈ $250 | **25%** |
+| **Power** 200K | Opus 5.5 · Max | Opus 5.5 · High | GPT-6 Sol · Extra High | ~24,960 cr ≈ $250 | **12%** |
 
-At **Any** patience Basic is unchanged, and Heavy/Power buy Opus 5.5 · Extra High for the worker and
-Opus 5.5 · High for the scout (~44,300 cr). At **Fast**, Basic runs GPT-6 Sol · High in both loop
-roles (~9,900 cr, 76%) — one model, one answer.
+Minutes per task on those picks: the loop roles take 1.6–4.3 minutes; the architect 7.5 or more
+(Opus 5.5 · Max is not timed and is held to its Extra High time). At **Fast** patience (3 / 1.5 min)
+every tier runs GPT-6 Sol in both loop roles — Extra High for the worker, Medium for the scout —
+and Heavy uses ~14,000 credits. At **Any**, Heavy/Power buy Opus 5.5 · Extra High for the worker and
+Opus 5.5 · High for the scout (~44,300 cr).
 
 Four conclusions worth arguing about at work:
 
@@ -113,18 +117,17 @@ Four conclusions worth arguing about at work:
    is now GPT-6 Luna, then GPT-6 Sol; only two GPT-5.6 Luna rungs survive, and Opus 5.5 · Low fell
    off it (GPT-6 Sol · High scores more for less). **Opus 5.5 leads from $1.34 a task up** —
    Medium through Max.
-2. **Basic is enough for the average engineer, and now runs on GPT-6 Sol.** The merit-only
-   shortlist costs ~29,600 credits (228% of Basic), so the budget picks the loop roles: GPT-6 Sol
-   at Extra High and High. The worker scores a little more than Opus 5.5 · Low did on 22 September
-   (44.1 against 42.3) for about the same credits — but you wait 45 s for its first answer instead
-   of 7. At Fast patience it drops to GPT-6 Sol · High, 8 s.
-3. **Heavy and Power stop at 30% and 15% because of the wait, not the money.** The next step up is
-   Opus 5.5 · Extra High, which thinks for about 150 s before it answers; Balanced patience will not
-   put that on a role you wait on all day. The plan says so next to the number.
-4. **Waiting times are medians, and they move.** Opus 5.5 · High measured 12.7 s on 22 September
-   and 30.4 s on 24 September. A pick that sits near a patience ceiling can flip from one reading
-   to the next without any price or score changing — that is the rule working, not noise, but it
-   is worth knowing before reading a change in the verdict as news.
+2. **Basic is enough for the average engineer, and runs its loops on GPT-6 Sol.** The merit-only
+   shortlist costs ~25,000 credits (192% of Basic), so the budget picks the loop roles: GPT-6 Sol at
+   Extra High (2.5 min a task) and High (1.6 min).
+3. **Heavy and Power stop at 25% and 12% because of time, not money.** The next step up for the
+   worker is Opus 5.5 · Extra High at 7.5 minutes a task, past Balanced's six; for the scout it is
+   anything over three. The plan says so next to the number. Choose Any and the tier is spent
+   further — at the price of loops that each take seven minutes.
+4. **Times are medians, and they move.** Opus 5.5 · High's wait to its first answer went from
+   12.7 s to 30.4 s in two days. Time per task comes from the index runs and moves less often, but
+   a pick that sits near a patience ceiling can still flip without any price or score changing —
+   that is the rule working, not noise.
 
 ## The Luna effort question
 
@@ -140,7 +143,8 @@ than GPT-5.6 Luna at almost every effort:
 | Medium | 1.6 cr · 25.0 · 2.6 s | 1.7 cr · 29.5 · 5.3 s |
 | Low | 1.0 cr · 21.0 · 1.7 s | 0.4 cr · 20.9 · 2.1 s |
 
-*Credits per task · Intelligence Index · wait to the first answer, 2026-09-24.*
+*Credits per task · Intelligence Index · wait to the first answer, 2026-09-24. Minutes per task:
+GPT-6 Luna 0.3 (low) to 5.7 (max), GPT-5.6 Luna 0.3 to 5.4.*
 
 Every effort is cheap next to any tier — the whole scout load on GPT-6 Luna · Max is under 400
 credits a month. What Max costs is nearly two minutes of silence per request. For a role you wait

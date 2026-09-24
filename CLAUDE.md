@@ -2,7 +2,7 @@
 
 **Kvasir** is one page that answers a single question: *which agent do I start for this task,
 today.* It merges three sources — **Artificial Analysis** (Intelligence Index, cost per task and
-the wait to the first answer, always per effort level, all from the same runs), **AI Stupid Level**
+time per task, always per effort level, all from the same runs), **AI Stupid Level**
 (drift: is this model quietly getting worse) and **GitHub Copilot's models-and-pricing docs** (what
 we can actually pick at work, and what it bills) — into three roles: architect, worker, scout,
 filled per AI-credit tier and per patience setting. CursorBench scored the board until
@@ -96,20 +96,30 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   timeline, `/api/history` tags every reading with the version that produced it, and the page says
   so for six weeks after a change. Never compare scores across versions, and never explain a
   shrunken board as a bug before checking the version.
-- **Two clocks, joined differently.** Output speed is a property of the model and its hardware, so
-  a variant that was not timed borrows its family's, labelled with the effort it came from; the
-  wait is not, because reasoning effort *is* the waiting (Opus 5.5: 13 s to first answer at high,
-  170 s at xhigh). `_speed_block()` keeps them apart on purpose. A zero wait means absent, never
-  instant.
-- **Patience is a ceiling for the loop roles, never a score.** The worker and the scout are waited
-  on all day, so a variant whose own wait to the first answer passes the selected ceiling
-  (`budget.PATIENCE`: Fast 30/10 s, Balanced 90/30 s, Any) cannot hold one; the architect is
-  exempt, because planning is waited on once and deliberately. It replaced an 80 tok/s floor that,
-  once the source timed everything, barred Sonnet 5, Terra and Sol while saying nothing about a
-  two-minute silence. A variant nobody has timed passes — the same rule as the drift veto, for the
-  same reason: absence of evidence decides nothing. Never build a rule that reads "no number" as
-  "slow". The loop roles climb a frontier *rebuilt* from the quick variants, not the full frontier
-  filtered — a slow rung can hide the quick variant it dominated.
+- **Clocks, joined differently.** Output speed is a property of the model and its hardware, so a
+  variant that was not timed borrows its family's, labelled with the effort it came from; time per
+  task and the wait to the first answer are not, because reasoning effort *is* the time (Opus 5.5:
+  1.3 min a task at low, 7.5 at xhigh). The only exception is the labelled lower-bound floor.
+  `_speed_block()` keeps them apart on purpose. A zero means absent, never instant.
+- **Patience is a ceiling for the loop roles, never a score.** The worker and the scout are the
+  roles you iterate with, so a variant whose time per task (AA's decode time per index task,
+  reasoning included — every priced variant has one) passes the selected ceiling
+  (`budget.PATIENCE`: Fast 3/1.5 min, Balanced 6/3, Any) cannot hold one; the architect is exempt,
+  because a plan is made once and deliberately. It replaced first an 80 tok/s floor, which barred
+  whole models once the source timed everything, then the wait to the first answer, which says
+  when a loop starts rather than how long it lasts. A variant nobody timed passes — absence of
+  evidence decides nothing — *unless a lower effort of the same model was timed*: then it takes at
+  least that long (`recommend._task_floor`). Without that floor Opus 5.5 · Max, the slowest variant
+  on the board, took a Fast worker's seat as "unmeasured". The loop roles climb a frontier
+  *rebuilt* from the quick variants, not the full frontier filtered — a slow rung can hide the
+  quick variant it dominated. The opening picks keep the stack's shape too: a scout never opens
+  dearer than its worker.
+- **The map splits each axis in the middle, and each x half has its own scale.** Cost splits at
+  $1, time at the worker's patience limit, tokens at the geometric middle; y at the middle of the
+  range, as on AA's own charts. A fixed split otherwise lands wherever the data puts it (75% of
+  the width for cost, 30% for time) and the attractive quadrant becomes a sliver. Ordering is never
+  changed, and the subtitle says the halves are scaled apart. Points estimated from a floor are
+  drawn hollow and kept off the Pareto line.
 - **An allowance is spent, not hoarded — but never silently.** Unused credits pool back to the
   billing entity, so the plan buys up to `TARGET_UTILISATION` and stops at `MAX_UTILISATION`.
   Surplus goes in role order (architect first); a role may not climb onto another role's exact

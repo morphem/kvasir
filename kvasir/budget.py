@@ -560,7 +560,7 @@ def plan_for_tier(
             "upgraded_from": upgraded_roles.get(role),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
             "speed_blocked": slot["speed_blocked"],
-            "wait_ceiling_seconds": slot["ceiling"],
+            "ceiling_minutes": slot["ceiling"],
             "out_of_reach": out_of_reach,
             "share_credits": round(share_credits),
             "per_task_budget_credits": round(per_task),

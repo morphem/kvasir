@@ -10,10 +10,13 @@ const PANEL_STORAGE_KEY = "kvasir.panel";
    the one you want is always the fourth or the fifth. The verdict stays pinned above — it is
    the reason the page exists — and everything below it becomes one switchable panel, so a
    question like "what do all the Opus variants wait" is a click rather than a hunt. */
+/* The map comes first: intelligence against cost and against time is the page's main source
+   of knowledge, and the tab most visitors should land on. */
 const PANELS = [
+  { id: "map", label: "Where to use what" },
   { id: "tasks", label: "Task → agent" },
   { id: "budget", label: "Month on this tier" },
-  { id: "value", label: "Where value sits" },
+  { id: "value", label: "Is the upgrade worth it" },
   { id: "models", label: "All models" },
   { id: "drift", label: "Drift" },
   { id: "method", label: "Method" },
@@ -23,7 +26,9 @@ const state = {
   showAll: false,
   tier: null,
   patience: null,
-  waitFilter: null, // seconds, or null for any wait — the models table's own filter
+  waitFilter: null, // minutes per task, or null for any — the models table's own filter
+  map: null, // which chart the map shows: cost, time or tokens
+  market: false, // draw the models we cannot start behind the board, for scale
   selected: null,
   everyVariant: false,
   families: [], // model keys with their variant line drawn on the scatter, in activation order
@@ -151,7 +156,7 @@ function dominatorOf(candidate) {
 
 function selectVariant(id) {
   state.selected = id;
-  renderScatter(state.view);
+  renderMap(state.view);
   renderChartDetail();
   renderLadder(state.view);
 }
@@ -166,22 +171,23 @@ function familyName(candidates) {
   return candidates[0].label.split(" · ")[0];
 }
 
-/* Families worth a line: two or more priced variants. Alphabetical, so the list never
-   reshuffles when scores move. */
+/* Families worth a line: two or more efforts. The line runs low to max, so on every chart
+   it reads as the same thing — what turning the effort dial up buys, and what it costs.
+   Alphabetical, so the list never reshuffles when scores move. */
 function families(view) {
   const groups = new Map();
-  view.candidates
-    .filter((c) => c.cost_usd > 0)
-    .forEach((c) => {
-      if (!groups.has(c.key)) groups.set(c.key, []);
-      groups.get(c.key).push(c);
-    });
+  // Current models only: a retired family's ladder is history, and seventeen chips above the
+  // chart buried the seven that matter.
+  view.candidates.filter((c) => !c.deprecated).forEach((c) => {
+    if (!groups.has(c.key)) groups.set(c.key, []);
+    groups.get(c.key).push(c);
+  });
   return [...groups.values()]
     .filter((members) => members.length >= 2)
     .map((members) => ({
       key: members[0].key,
       name: familyName(members),
-      variants: members.sort((a, b) => (a.cost_uusd ?? 0) - (b.cost_uusd ?? 0)),
+      variants: members.sort((a, b) => (EFFORT_RANK[a.effort] ?? 9) - (EFFORT_RANK[b.effort] ?? 9)),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -194,7 +200,7 @@ function toggleFamily(key) {
     state.families.push(key);
   }
   renderFamilyPicker(state.view);
-  renderScatter(state.view);
+  renderMap(state.view);
 }
 
 function renderFamilyPicker(view) {
@@ -333,7 +339,7 @@ function renderTierTabs(view) {
 /* Patience is the second switch, and it reads like the first: a name, and underneath it the
    numbers it stands for — the longest wait before the first answer the scout and the worker
    may put you through. The architect is never on this clock. */
-const ceilingText = (seconds) => (seconds === null || seconds === undefined ? "any" : `${seconds} s`);
+const ceilingText = (minutes) => (minutes === null || minutes === undefined ? "any" : `${minutes} min`);
 
 function renderPatienceTabs(view) {
   const tabs = $("#patience-tabs");
@@ -345,6 +351,7 @@ function renderPatienceTabs(view) {
       level.scout === null && level.worker === null
         ? "no limit on waiting"
         : `scout ${ceilingText(level.scout)} · worker ${ceilingText(level.worker)}`;
+    // a task, per loop
     const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
       <b>${escapeHtml(level.label)}</b>
       <span>${escapeHtml(detail)}</span>
@@ -373,41 +380,55 @@ function copilotBadge(copilot) {
   return `<span class="badge ok">Copilot · $${copilot.input_usd}/$${copilot.output_usd} per 1M</span>`;
 }
 
-/* ---------- the clock: one wait scale for the whole page ----------
+/* ---------- the clock: one time scale for the whole page ----------
 
-   Waits run from under a second to five minutes, so a linear bar would draw every quick
-   model as the same sliver. A square-root scale keeps 4 s and 13 s apart and still puts
-   170 s near the end. The ticks are the patience ceilings: the limits a loop role has to beat. */
-const CLOCK_MAX_S = 300;
-const CLOCK_TICKS = [10, 30, 90];
-const clockX = (seconds) => Math.min(1, Math.sqrt(Math.max(0, seconds) / CLOCK_MAX_S));
+   Minutes per task — the length of one loop — on one square-root scale shared by every card,
+   so a one-minute task and a four-minute task stay apart and a fifteen-minute one still fits.
+   The ticks are the patience ceilings: the limits a loop role has to beat. */
+const CLOCK_MAX_MIN = 16;
+const clockX = (minutes) => Math.min(1, Math.sqrt(Math.max(0, minutes) / CLOCK_MAX_MIN));
 
-function clock(role, wait, ceiling, animate) {
-  const ticks = CLOCK_TICKS.map(
-    (t) =>
-      `<span class="tick ${t === ceiling ? "limit" : ""}" style="left:${(clockX(t) * 100).toFixed(1)}%">
-         <em>${t} s</em></span>`
-  ).join("");
-  if (wait === null || wait === undefined) {
+function clockTicks() {
+  const values = new Set();
+  ((state.view && state.view.patience) || []).forEach((p) => {
+    [p.scout, p.worker].forEach((v) => v !== null && v !== undefined && values.add(v));
+  });
+  return [...values].sort((a, b) => a - b);
+}
+
+function clock(role, pick, ceiling, animate) {
+  const minutes = loopMinutes(pick);
+  const floorFrom = pick && pick.speed ? pick.speed.task_minutes_floor_from : null;
+  const ticks = clockTicks()
+    .map(
+      (t) =>
+        `<span class="tick ${t === ceiling ? "limit" : ""}" style="left:${(clockX(t) * 100).toFixed(1)}%">
+           <em>${t}</em></span>`
+    )
+    .join("");
+  if (minutes === null || minutes === undefined) {
     return `<div class="clock untimed">
-      <div class="clock-head"><b>not timed</b><span>no wait measured at this effort</span></div>
+      <div class="clock-head"><b>not timed</b><span>no time per task measured at this effort</span></div>
       <div class="clock-track">${ticks}</div>
     </div>`;
   }
-  // The bar takes longer to fill the longer the real wait is: the role that answers first
+  // The bar takes longer to fill the longer the real task is: the role that finishes first
   // lands first. Only on load and on a switch — never on the background refresh.
-  const duration = Math.round(250 + 1100 * clockX(wait));
+  const duration = Math.round(250 + 1100 * clockX(minutes));
   const limit =
     role === "architect"
-      ? "not on the clock: planning is waited on once"
+      ? "a task — planning runs once, so it is not on the clock"
       : ceiling === null || ceiling === undefined
-      ? "to the first answer — no limit set"
-      : `to the first answer — limit ${ceiling} s`;
-  return `<div class="clock">
-    <div class="clock-head"><b>${secs(wait).replace(" s", "<small>s</small>")}</b><span>${escapeHtml(limit)}</span></div>
+      ? "a task — no limit set"
+      : `a task — limit ${ceiling} min`;
+  const value = `${floorFrom ? "≥ " : ""}${minutes < 10 ? minutes.toFixed(1) : Math.round(minutes)}`;
+  return `<div class="clock ${floorFrom ? "floor" : ""}">
+    <div class="clock-head"><b>${value}<small>min</small></b><span>${escapeHtml(
+      floorFrom ? `a task — not timed; ${EFFORT_NAMES[floorFrom] || floorFrom} already takes this long` : limit
+    )}</span></div>
     <div class="clock-track">
       <i class="clock-bar ${role === "architect" ? "free" : ""} ${animate ? "run" : ""}"
-         style="--to:${(clockX(wait) * 100).toFixed(1)}%;--dur:${duration}ms"></i>
+         style="--to:${(clockX(minutes) * 100).toFixed(1)}%;--dur:${duration}ms"></i>
       ${ticks}
     </div>
   </div>`;
@@ -503,7 +524,7 @@ function renderVerdicts(view, animate) {
           <span class="role-line">${escapeHtml(role.role)}</span>
         </div>
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
-        ${clock(role.id, budgetWait(pick), slot.wait_ceiling_seconds, animate)}
+        ${clock(role.id, pick, slot.ceiling_minutes, animate)}
         <div class="metrics">
           <div class="metric"><b>${idx(pick.score)}</b><span>Intelligence</span></div>
           <div class="metric"><b data-count="card-${role.id}-task" data-value="${slot.per_task_credits ?? ""}"></b><span>credits / task</span></div>
@@ -530,7 +551,7 @@ function renderVerdicts(view, animate) {
     : "";
 }
 
-const budgetWait = (candidate) => (candidate && candidate.speed ? candidate.speed.first_answer_seconds : null);
+const firstAnswer = (candidate) => (candidate && candidate.speed ? candidate.speed.first_answer_seconds : null);
 
 /* A model GitHub already sells can arrive before its price does: Artificial Analysis times
    and scores a release on day one and prices it days later. Until then it cannot be planned,
@@ -624,9 +645,9 @@ function propertyRows(pick, view) {
           bar(speed.tokens_per_second / scales.speed, "cyan-fill"),
         ]
       : ["types", '<span class="dim">not measured</span>', ""],
-    speed.end_to_end_seconds
-      ? ["one answer", `${secs(speed.end_to_end_seconds)} for 500 tokens`, ""]
-      : ["one answer", '<span class="dim">not measured</span>', ""],
+    speed.first_answer_seconds
+      ? ["first answer", `${secs(speed.first_answer_seconds)} before it starts`, ""]
+      : ["first answer", '<span class="dim">not measured</span>', ""],
     [
       "coding",
       pick.terminal_bench === null || pick.terminal_bench === undefined
@@ -727,11 +748,11 @@ function renderBudget(view, animate) {
     `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
     `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
     `A task is one Artificial Analysis Intelligence Index task, averaged over its ten evaluations. ` +
-    `The worker and the scout are roles you wait on all day, so at this patience a variant that ` +
+    `The worker and the scout are the roles you iterate with, so at this patience a variant that ` +
     `takes longer than ${ceilingText((assumptions.patience[state.patience] || {}).worker)} (worker) or ` +
-    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) to its first answer ` +
-    `cannot take one — the architect is exempt, because you wait on planning once and on purpose. ` +
-    `A variant nobody has timed is not treated as slow. ` +
+    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) per task cannot take ` +
+    `one — the architect is exempt, because a plan is made once and on purpose. A variant nobody has ` +
+    `timed is not treated as slow, unless a lower effort of the same model already takes longer. ` +
     `The plan then spends the surplus up to ${Math.round(assumptions.target_utilisation * 100)}% of the ` +
     `tier and never plans past ${Math.round(assumptions.max_utilisation * 100)}% — an unused credit ` +
     `buys nothing, and the month is a model rather than a meter. ` +
@@ -789,132 +810,371 @@ function renderTasks(view) {
         <td class="pick-cell">${escapeHtml(name)}${effort ? `<em>${escapeHtml(effort)}</em>` : ""}
             ${pick && !pick.copilot ? '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>' : ""}</td>
         <td class="num">${pick ? idx(pick.score) : "—"}</td>
-        <td class="num">${pick ? secs(budgetWait(pick)) : "—"}</td>
+        <td class="num">${pick ? minutesText(loopMinutes(pick)) : "—"}</td>
         <td class="num">${slot ? credits(slot.per_task_credits) : "—"}</td>
       </tr>`)
     );
   });
 }
 
-/* ---------- scatter: cost vs score ---------- */
+/* ---------- the map: intelligence against cost, time or tokens ----------
 
-function renderScatter(view) {
-  const svg = $("#scatter");
-  const W = 1000;
-  const H = 470;
-  const pad = { l: 62, r: 24, t: 24, b: 54 };
-  const points = view.candidates.filter((c) => c.priced && c.cost_usd > 0);
-  if (!points.length) return;
+   Three charts, one frame, the way Artificial Analysis draws them: intelligence up, a
+   measure of expense across, a split in each axis, and the top-left quadrant — smarter and
+   cheaper, or smarter and quicker — tinted as the place to shop. The dotted line is the Pareto
+   line: the variants nothing else beats on both axes at once.
 
-  const costs = points.map((p) => Math.log10(p.cost_usd));
-  const scores = points.map((p) => p.score);
-  const x0 = Math.min(...costs) - 0.08;
-  const x1 = Math.max(...costs) + 0.08;
-  const y0 = Math.min(...scores) - 2;
-  const y1 = Math.max(...scores) + 2;
-  const sx = (cost) => pad.l + ((Math.log10(cost) - x0) / (x1 - x0)) * (W - pad.l - pad.r);
-  const sy = (score) => H - pad.b - ((score - y0) / (y1 - y0)) * (H - pad.t - pad.b);
+   The board is what we can start. The rest of the market can be drawn behind it for scale,
+   as hollow grey dots that never move the Pareto line and never enter a role.
 
-  const picks = {};
-  const current = plan();
-  Object.entries((current && current.roles) || {}).forEach(([id, slot]) => {
-    if (slot.pick) picks[`${slot.pick.key}|${slot.pick.effort}`] = id;
+   Switching charts moves the dots rather than redrawing them: each point is a group that
+   keeps its identity between renders, and its position is a CSS transform, so the browser
+   animates the move. The eye follows one model from cheap-but-slow to fast-but-dear. */
+
+const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 };
+const EFFORT_NAMES = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra High", max: "Max" };
+const loopMinutes = (c) => (c && c.speed ? c.speed.task_minutes : c && c.task_minutes !== undefined ? c.task_minutes : null);
+
+const shortTokens = (v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : `${Math.round(v)}`);
+const minutesText = (v) => (v === null || v === undefined ? "—" : `${v < 10 ? v.toFixed(1) : Math.round(v)} min`);
+
+function patienceLevel() {
+  return ((state.view && state.view.patience) || []).find((p) => p.id === state.patience) || null;
+}
+
+const MAPS = {
+  cost: {
+    tab: "Cost per task",
+    title: "Intelligence against cost per task",
+    axis: "COST OF ONE INDEX TASK (USD, LOG SCALE)",
+    log: true,
+    x: (c) => (c.cost_usd > 0 ? c.cost_usd : null),
+    ticks: [0.005, 0.01, 0.03, 0.1, 0.3, 1, 3, 10],
+    fmt: (v) => (v < 0.1 ? `$${v.toFixed(3).replace(/0+$/, "")}` : `$${v < 1 ? v.toFixed(2) : v}`),
+    split: () => ({ x: 1, label: "$1 a task" }),
+    corner: "smarter and cheaper",
+    sub: () =>
+      "What one Intelligence Index task costs, per effort level. Left of $1 and above the middle " +
+      "is where the value is. The loop roles live there; the architect may sit to the right on purpose. " +
+      "Each half of the cost axis has its own scale, so $1 sits in the middle.",
+  },
+  time: {
+    tab: "Time per task",
+    title: "Intelligence against time per task",
+    axis: "TIME PER TASK (MINUTES)",
+    log: false,
+    x: (c) => loopMinutes(c),
+    fmt: (v) => `${v}`,
+    split: (domain) => {
+      const level = patienceLevel();
+      if (level && level.worker !== null) {
+        return { x: level.worker, label: `worker ≤ ${level.worker} min`, second: level.scout, secondLabel: `scout ≤ ${level.scout} min` };
+      }
+      const middle = Math.round((domain[0] + domain[1]) / 2);
+      return { x: middle, label: `${middle} min` };
+    },
+    corner: "smarter and quicker",
+    sub: () => {
+      const level = patienceLevel();
+      return (
+        "How long one task takes — decode time, reasoning included. You iterate with the worker and " +
+        "the scout, so this is the length of every loop; the architect plans once and may take its time. " +
+        (level && level.worker !== null
+          ? `The split is the worker's limit at ${level.label.toLowerCase()} patience, the dashed line the scout's; each half of the axis has its own scale.`
+          : "No patience limit is set, so the split is the middle of the range.")
+      );
+    },
+  },
+  tokens: {
+    tab: "Output tokens per task",
+    title: "Intelligence against output tokens per task",
+    axis: "OUTPUT TOKENS PER INDEX TASK (LOG SCALE)",
+    log: true,
+    x: (c) => (c.output_tokens > 0 ? c.output_tokens : null),
+    ticks: [1000, 3000, 10000, 30000, 100000, 300000],
+    fmt: shortTokens,
+    split: (domain) => {
+      const middle = Math.pow(10, (Math.log10(domain[0]) + Math.log10(domain[1])) / 2);
+      const nice = Number(middle.toPrecision(1));
+      return { x: nice, label: `${shortTokens(nice)} tokens` };
+    },
+    corner: "smarter with fewer words",
+    sub: () =>
+      "How many tokens a model writes to finish one task, reasoning included — the thing both the " +
+      "bill and the clock are made of. Fewer tokens for the same score is efficiency you pay for twice.",
+  },
+};
+
+function renderMapTabs() {
+  const box = $("#map-tabs");
+  if (!box) return;
+  box.innerHTML = Object.entries(MAPS)
+    .map(
+      ([id, map]) =>
+        `<button class="map-tab" role="tab" data-map="${id}" aria-selected="${state.map === id}">${escapeHtml(map.tab)}</button>`
+    )
+    .join("");
+  box.querySelectorAll(".map-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.map = button.dataset.map;
+      store("kvasir.map", state.map);
+      hideTip();
+      renderMapTabs();
+      renderMap(state.view);
+    });
   });
-  const colour = { architect: "#7c5cff", worker: "#38e1c4", scout: "#8b97a8" };
+}
+
+function paretoOf(points) {
+  const ordered = [...points].sort((a, b) => a.x - b.x || b.score - a.score);
+  const out = [];
+  let best = -Infinity;
+  ordered.forEach((p) => {
+    if (p.score > best) {
+      out.push(p);
+      best = p.score;
+    }
+  });
+  return out;
+}
+
+function renderMap(view) {
+  const svg = $("#scatter");
+  if (!svg || !view) return;
+  const map = MAPS[state.map] || MAPS.cost;
+  $("#map-title").textContent = map.title;
+  $("#map-sub").textContent = map.sub();
+  const W = 1000;
+  const H = 520;
+  const pad = { l: 62, r: 24, t: 26, b: 58 };
+
+  const board = view.candidates
+    .map((c) => ({ c, id: candidateId(c), x: map.x(c), score: c.score }))
+    .filter((p) => p.x !== null && p.x !== undefined);
+  const market = state.market
+    ? (view.market || [])
+        .map((m) => ({ c: m, id: `market|${m.key}`, x: map.x(m), score: m.score, ghost: true }))
+        .filter((p) => p.x !== null && p.x !== undefined)
+    : [];
+  const all = [...board, ...market];
+  if (!all.length) {
+    svg.innerHTML = "";
+    return;
+  }
+
+  // The split sits in the middle of both axes, so the four quadrants are four real areas and
+  // the attractive one is a quarter of the chart, not a sliver. On y that is the middle of the
+  // range, as on the source's own charts. On x each half of the axis is scaled on its own —
+  // minimum to split on the left, split to maximum on the right — because a fixed split ($1,
+  // the worker's limit) would otherwise land wherever the data happens to put it: at 75% of
+  // the width for cost, at 30% for time. The subtitle says so; ordering is never changed.
+  const xs = all.map((p) => p.x);
+  const ys = all.map((p) => p.score);
+  const tf = (v) => (map.log ? Math.log10(v) : v);
+  const rawLo = Math.min(...xs);
+  const rawHi = Math.max(...xs);
+  const domain = [rawLo, rawHi];
+  const split = map.split(domain);
+  const lo = map.log ? tf(Math.min(rawLo, split.x)) - 0.12 : 0;
+  const hi = map.log ? tf(Math.max(rawHi, split.x)) + 0.12 : Math.max(rawHi, split.x) * 1.06;
+  const sp = Math.min(Math.max(tf(split.x), lo + 1e-6), hi - 1e-6);
+  const half = (W - pad.l - pad.r) / 2;
+  const sx = (v) => {
+    const u = tf(v);
+    return u <= sp ? pad.l + ((u - lo) / (sp - lo)) * half : pad.l + half + ((u - sp) / (hi - sp)) * half;
+  };
+  const y0 = Math.floor((Math.min(...ys) - 2) / 5) * 5;
+  const y1 = Math.ceil((Math.max(...ys) + 2) / 5) * 5;
+  const sy = (v) => H - pad.b - ((v - y0) / (y1 - y0)) * (H - pad.t - pad.b);
+  const ySplit = Math.round((y0 + y1) / 2);
 
   const parts = [];
-  [0.01, 0.03, 0.1, 0.3, 1, 3, 10].forEach((tick) => {
+  // Quadrants first, so everything else sits on them.
+  const qx = pad.l + half;
+  const qy = sy(ySplit);
+  parts.push(`<rect class="quad-best" x="${pad.l}" y="${pad.t}" width="${qx - pad.l}" height="${qy - pad.t}"/>`);
+  parts.push(`<rect class="quad-worst" x="${qx}" y="${qy}" width="${W - pad.r - qx}" height="${H - pad.b - qy}"/>`);
+  parts.push(`<text x="${pad.l + 10}" y="${pad.t + 18}" class="quad-label">${escapeHtml(map.corner)}</text>`);
+
+  // Grid and ticks — per half, since each half has its own scale.
+  const ticks = map.log
+    ? map.ticks.filter((t) => tf(t) >= lo && tf(t) <= hi)
+    : (() => {
+        const out = [];
+        const stepLeft = split.x <= 3 ? 0.5 : split.x <= 8 ? 1 : 2;
+        for (let t = 0; t < split.x - 1e-9; t += stepLeft) out.push(Number(t.toFixed(2)));
+        const right = hi - split.x;
+        const stepRight = right > 30 ? 10 : right > 12 ? 5 : right > 5 ? 2 : 1;
+        out.push(split.x);
+        const first = Math.ceil((split.x + stepRight / 2) / stepRight) * stepRight;
+        for (let t = first; t <= hi; t += stepRight) out.push(Number(t.toFixed(2)));
+        return out;
+      })();
+  ticks.forEach((tick) => {
     const x = sx(tick);
-    if (x < pad.l - 2 || x > W - pad.r + 2) return;
-    parts.push(`<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}" stroke="#222a3d" stroke-width="1"/>`);
-    parts.push(`<text x="${x}" y="${H - pad.b + 22}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace">$${tick}</text>`);
+    parts.push(`<line x1="${x}" y1="${pad.t}" x2="${x}" y2="${H - pad.b}" class="grid"/>`);
+    parts.push(`<text x="${x}" y="${H - pad.b + 22}" class="tick-label" text-anchor="middle">${escapeHtml(map.fmt(tick))}</text>`);
   });
-  for (let score = Math.ceil(y0 / 5) * 5; score <= y1; score += 5) {
+  for (let score = y0; score <= y1; score += 5) {
     const y = sy(score);
-    parts.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" stroke="#222a3d" stroke-width="1"/>`);
-    parts.push(`<text x="${pad.l - 12}" y="${y + 4}" fill="#8b97a8" font-size="12" text-anchor="end" font-family="ui-monospace,monospace">${score}</text>`);
+    parts.push(`<line x1="${pad.l}" y1="${y}" x2="${W - pad.r}" y2="${y}" class="grid"/>`);
+    parts.push(`<text x="${pad.l - 12}" y="${y + 4}" class="tick-label" text-anchor="end">${score}</text>`);
   }
-  parts.push(`<text x="${W / 2}" y="${H - 8}" fill="#8b97a8" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" letter-spacing="1.6">COST OF ONE INDEX TASK</text>`);
-
-  const frontier = view.ladder.filter((rung) => rung.cost_usd > 0);
-  if (frontier.length > 1) {
-    const path = frontier.map((rung) => `${sx(rung.cost_usd)},${sy(rung.score)}`).join(" ");
-    parts.push(`<polyline points="${path}" fill="none" stroke="#38e1c4" stroke-width="1.5" stroke-dasharray="5 6" opacity=".55"/>`);
+  // The splits, named where they meet the axis.
+  parts.push(`<line x1="${qx}" y1="${pad.t}" x2="${qx}" y2="${H - pad.b}" class="split"/>`);
+  parts.push(`<line x1="${pad.l}" y1="${qy}" x2="${W - pad.r}" y2="${qy}" class="split"/>`);
+  parts.push(`<text x="${qx + 6}" y="${H - pad.b - 8}" class="split-label">${escapeHtml(split.label)}</text>`);
+  if (split.second !== undefined && split.second !== null) {
+    const x2 = sx(split.second);
+    parts.push(`<line x1="${x2}" y1="${pad.t}" x2="${x2}" y2="${H - pad.b}" class="split second"/>`);
+    parts.push(`<text x="${x2 + 6}" y="${H - pad.b - 24}" class="split-label">${escapeHtml(split.secondLabel)}</text>`);
   }
+  parts.push(`<text x="${pad.l - 44}" y="${(pad.t + H - pad.b) / 2}" class="axis-label" transform="rotate(-90 ${pad.l - 44} ${(pad.t + H - pad.b) / 2})" text-anchor="middle">INTELLIGENCE INDEX</text>`);
+  parts.push(`<text x="${(pad.l + W - pad.r) / 2}" y="${H - 10}" class="axis-label" text-anchor="middle">${escapeHtml(map.axis)}</text>`);
 
-  /* Family variant ladders: one solid line per activated model, cheapest effort first.
-     Drawn under the dots so the points stay the primary mark. */
+  // Pareto line over the board only — what we can actually start — and only over measured
+  // points: a variant drawn at its lower-bound time is an estimate, not a place on the line.
+  const front = paretoOf(board.filter((p) => !(state.map === "time" && p.c.speed && p.c.speed.task_minutes_floor_from)));
+  if (front.length > 1) {
+    parts.push(`<polyline class="pareto" points="${front.map((p) => `${sx(p.x)},${sy(p.score)}`).join(" ")}"/>`);
+  }
+  // Family lines: one model's efforts in order, drawn under the dots.
   families(view).forEach((family) => {
     const hue = familyHue(family.key);
     if (!hue) return;
-    const path = family.variants.map((v) => `${sx(v.cost_usd)},${sy(v.score)}`).join(" ");
-    parts.push(`<polyline points="${path}" fill="none" stroke="${hue}" stroke-width="2" opacity=".85"/>`);
+    const path = family.variants
+      .map((v) => ({ v, x: map.x(v) }))
+      .filter((p) => p.x !== null && p.x !== undefined)
+      .map((p) => `${sx(p.x)},${sy(p.v.score)}`);
+    if (path.length > 1) parts.push(`<polyline points="${path.join(" ")}" fill="none" stroke="${hue}" stroke-width="2" opacity=".85"/>`);
+  });
+  svg.querySelectorAll(":scope > :not(g.pts)").forEach((el) => el.remove());
+  svg.insertAdjacentHTML("afterbegin", parts.join(""));
+
+  // Points: persistent groups, moved by transform.
+  let layer = svg.querySelector("g.pts");
+  if (!layer) {
+    layer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    layer.setAttribute("class", "pts");
+    svg.append(layer);
+  } else {
+    svg.append(layer); // keep it on top of the freshly drawn frame
+  }
+  const picks = {};
+  const current = plan();
+  Object.entries((current && current.roles) || {}).forEach(([role, slot]) => {
+    if (slot.pick) picks[candidateId(slot.pick)] = role;
+  });
+  const onFront = new Set(front.map((p) => p.id));
+  const colour = { architect: "#7c5cff", worker: "#38e1c4", scout: "#8b97a8" };
+
+  // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
+  // not print over each other; a dot without a label still answers to hover.
+  // Dots are obstacles too: a label printed over the next point on the Pareto line hid it.
+  const placed = all.map((p) => ({ x0: sx(p.x) - 6, x1: sx(p.x) + 6, y0: sy(p.score) - 6, y1: sy(p.score) + 6 }));
+  const fits = (box) =>
+    box.x0 >= pad.l && box.x1 <= W - pad.r && box.y0 >= pad.t &&
+    !placed.some((o) => box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0);
+  const labelFor = (p, text, weight) => {
+    const x = sx(p.x);
+    const y = sy(p.score);
+    const width = text.length * (weight ? 7.4 : 6.6) + 4;
+    const tries = [
+      { dx: 11, dy: 4, anchor: "start" },
+      { dx: -11, dy: 4, anchor: "end" },
+      { dx: 0, dy: -12, anchor: "middle" },
+      { dx: 0, dy: 20, anchor: "middle" },
+    ];
+    for (const t of tries) {
+      const left = t.anchor === "start" ? x + t.dx : t.anchor === "end" ? x + t.dx - width : x - width / 2;
+      const box = { x0: left, x1: left + width, y0: y + t.dy - 12, y1: y + t.dy + 3 };
+      if (fits(box)) {
+        placed.push(box);
+        return t;
+      }
+    }
+    // A role pick is always named, even over a neighbour: it is the answer the chart is for.
+    if (weight) return x > W - pad.r - width - 12 ? tries[1] : tries[0];
+    return null;
+  };
+  // Picks claim their label space first.
+  const order = [...all].sort((a, b) => (picks[b.id] ? 2 : onFront.has(b.id) ? 1 : 0) - (picks[a.id] ? 2 : onFront.has(a.id) ? 1 : 0));
+  const seen = new Set();
+  order.forEach((p) => {
+    seen.add(p.id);
+    const role = p.ghost ? null : picks[p.id];
+    const hue = p.ghost ? null : familyHue(p.c.key);
+    const selected = state.selected === p.id;
+    let g = layer.querySelector(`g.pt[data-id="${CSS.escape(p.id)}"]`);
+    const fresh = !g;
+    if (fresh) {
+      g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.setAttribute("class", "pt");
+      g.dataset.id = p.id;
+      layer.append(g);
+    }
+    const fill = p.ghost ? "none" : hue || (role ? colour[role] : "#3a4257");
+    const radius = role ? 7 : p.ghost ? 4 : hue ? 6 : 4.5;
+    const floor = !p.ghost && state.map === "time" && p.c.speed && p.c.speed.task_minutes_floor_from;
+    let label = "";
+    if (role) {
+      const t = labelFor(p, p.c.label, true);
+      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label pick" fill="${colour[role]}">${escapeHtml(p.c.label)}</text>`;
+    } else if (!p.ghost && (onFront.has(p.id) || hue)) {
+      const text = hue ? p.c.effort_label : p.c.label;
+      const t = labelFor(p, text, false);
+      if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label" ${hue ? `fill="${hue}"` : ""}>${escapeHtml(text)}</text>`;
+    }
+    g.innerHTML = `
+      <circle r="${radius}" fill="${floor ? "none" : fill}" class="${p.ghost ? "ghost" : role || hue ? "ring" : "dot"}"
+        ${floor ? `stroke="${hue || (role ? colour[role] : "#8b97a8")}" stroke-width="2" stroke-dasharray="2 2"` : ""}/>
+      ${selected ? `<circle r="${radius + 3.5}" fill="none" stroke="#e8ecf1" stroke-width="1.8" pointer-events="none"/>` : ""}
+      ${label}
+      <circle class="hit" r="11" fill="transparent" ${p.ghost ? "" : `data-id="${escapeHtml(p.id)}" tabindex="0" role="button"`}
+        aria-label="${escapeHtml(`${p.c.label}: ${idx(p.score)}, ${map.fmt(p.x)}`)}"/>`;
+    g.dataset.x = sx(p.x);
+    g.dataset.y = sy(p.score);
+    g.dataset.ghost = p.ghost ? "1" : "";
+    if (fresh) {
+      g.style.transition = "none";
+      g.style.transform = `translate(${sx(p.x)}px, ${sy(p.score)}px)`;
+      g.getBoundingClientRect(); // commit the start position before transitions resume
+      g.style.transition = "";
+    } else {
+      g.style.transform = `translate(${sx(p.x)}px, ${sy(p.score)}px)`;
+    }
+  });
+  layer.querySelectorAll("g.pt").forEach((g) => {
+    if (!seen.has(g.dataset.id)) g.remove();
   });
 
-  points.forEach((point) => {
-    const id = `${point.key}|${point.effort}`;
-    const role = picks[id];
-    const hue = familyHue(point.key);
-    /* An active family claims its dots' colour — the exploratory overlay wins over the
-       role tint while it is on, and gives it back the moment the line is switched off. */
-    const fill = hue || (role ? colour[role] : "#3a4257");
-    const radius = hue ? (role ? 7 : 6) : role ? 7 : 4.5;
-    const selected = state.selected === id;
-    parts.push(
-      `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius}" fill="${fill}" ${
-        role || hue ? 'stroke="#0b0e14" stroke-width="2"' : 'opacity=".85"'
-      }/>`
-    );
-    if (selected) {
-      parts.push(
-        `<circle cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="${radius + 3.5}" fill="none"
-           stroke="#e8ecf1" stroke-width="1.8" pointer-events="none"/>`
-      );
-    }
-    if (hue) {
-      /* Name the step, not the model: the line itself says whose ladder this is. */
-      const x = sx(point.cost_usd);
-      const anchor = x > W - 160 ? "end" : "start";
-      const dx = anchor === "end" ? -10 : 10;
-      parts.push(
-        `<text x="${x + dx}" y="${sy(point.score) - 8}" fill="${hue}" font-size="12" text-anchor="${anchor}" font-family="ui-monospace,monospace">${escapeHtml(point.effort_label)}</text>`
-      );
-    }
-    if (role && !hue) {
-      const x = sx(point.cost_usd);
-      const anchor = x > W - 200 ? "end" : "start";
-      const dx = anchor === "end" ? -12 : 12;
-      parts.push(
-        `<text x="${x + dx}" y="${sy(point.score) + 4}" fill="${fill}" font-size="13" font-weight="600" text-anchor="${anchor}" font-family="system-ui,sans-serif">${escapeHtml(point.label)}</text>`
-      );
-    }
-    /* The grey dots are small, so each gets an invisible, much larger hit target. */
-    parts.push(
-      `<circle class="hit" data-id="${escapeHtml(id)}" cx="${sx(point.cost_usd)}" cy="${sy(point.score)}" r="11" fill="transparent"
-         tabindex="0" role="button" aria-label="${escapeHtml(`${point.label}: ${idx(point.score)}, ${usd(point.cost_usd)} a task`)}"/>`
-    );
-  });
-
-  /* The crosshair runs from the hovered dot to both axes, so its price and score can be read
-     off the scale rather than guessed at. Drawn once, moved on hover. */
-  parts.push(`<g id="crosshair" visibility="hidden" pointer-events="none">
-    <line id="cross-x" stroke="#8b97a8" stroke-width="1" stroke-dasharray="3 4"/>
-    <line id="cross-y" stroke="#8b97a8" stroke-width="1" stroke-dasharray="3 4"/>
-  </g>`);
-  svg.innerHTML = parts.join("");
+  parts.length = 0;
+  svg.insertAdjacentHTML(
+    "beforeend",
+    `<g id="crosshair" visibility="hidden" pointer-events="none">
+      <line id="cross-x" class="cross"/><line id="cross-y" class="cross"/>
+    </g>`
+  );
   svg.dataset.padL = pad.l;
   svg.dataset.baseY = H - pad.b;
+  const keyMarket = $("#key-market");
+  if (keyMarket) keyMarket.hidden = !market.length;
 }
 
-/* ---------- scatter hover: one tooltip, one crosshair ---------- */
+/* ---------- map hover: one tooltip, one crosshair ---------- */
 
 function showTip(hit) {
   const svg = $("#scatter");
   const tip = $("#scatter-tip");
-  const candidate = findCandidate(hit.getAttribute("data-id"));
-  if (!svg || !tip || !candidate) return;
-  const cx = Number(hit.getAttribute("cx"));
-  const cy = Number(hit.getAttribute("cy"));
+  const g = hit.closest("g.pt");
+  if (!svg || !tip || !g) return;
+  const id = g.dataset.id;
+  const candidate = id.startsWith("market|")
+    ? (state.view.market || []).find((m) => `market|${m.key}` === id)
+    : findCandidate(id);
+  if (!candidate) return;
+  const cx = Number(g.dataset.x);
+  const cy = Number(g.dataset.y);
 
   const cross = svg.querySelector("#crosshair");
   const lineX = svg.querySelector("#cross-x");
@@ -925,16 +1185,26 @@ function showTip(hit) {
   lineY.setAttribute("y1", cy); lineY.setAttribute("y2", cy);
   cross.setAttribute("visibility", "visible");
 
-  const roles = rolesPickingNow(candidate);
-  const onFrontier = frontierIds().has(candidateId(candidate));
+  const ghost = Boolean(g.dataset.ghost);
+  const minutes = loopMinutes(candidate);
+  const floor = !ghost && candidate.speed && candidate.speed.task_minutes_floor_from;
+  const roles = ghost ? [] : rolesPickingNow(candidate);
+  const onFrontier = !ghost && frontierIds().has(candidateId(candidate));
   tip.innerHTML = `
     <b>${escapeHtml(candidate.label)}</b>
-    <span>${idx(candidate.score)} Intelligence · ${credits(taskCredits(candidate, state.view))} credits a task</span>
-    <span>${
-      budgetWait(candidate) === null ? "wait not timed" : `waits ${secs(budgetWait(candidate))} to answer`
+    <span>${idx(candidate.score)} Intelligence · ${
+      candidate.cost_usd ? `${credits(taskCredits(candidate, state.view))} credits a task` : "not priced"
     }</span>
+    <span>${
+      minutes === null || minutes === undefined
+        ? "time per task not measured"
+        : floor
+        ? `at least ${minutesText(minutes)} a task — untimed, ${escapeHtml(EFFORT_NAMES[floor] || floor)} takes that long`
+        : `${minutesText(minutes)} a task`
+    }${candidate.output_tokens ? ` · ${shortTokens(candidate.output_tokens)} tokens` : ""}</span>
+    ${ghost ? `<span class="dim">${escapeHtml(candidate.reason || "not available to us")}</span>` : ""}
     ${roles.length ? `<span class="cyan">today's ${escapeHtml(roles.join(" + "))}</span>` : ""}
-    ${!roles.length && onFrontier ? '<span class="cyan">on the value frontier</span>' : ""}`;
+    ${!roles.length && onFrontier ? '<span class="cyan">on the cost frontier</span>' : ""}`;
   const rect = svg.getBoundingClientRect();
   const scale = rect.width / 1000;
   const left = cx * scale;
@@ -1004,7 +1274,9 @@ function renderChartDetail() {
         candidate.priced ? `${credits(taskCredits(candidate, state.view))} credits / task` : "not priced yet"
       }</span>
       <span class="badge">${
-        budgetWait(candidate) === null ? "wait not timed" : `waits ${secs(budgetWait(candidate))}`
+        loopMinutes(candidate) === null || loopMinutes(candidate) === undefined
+          ? "time not measured"
+          : `${minutesText(loopMinutes(candidate))} a task`
       }</span>
       ${candidate.output_tokens ? `<span class="badge">${num(candidate.output_tokens)} tokens out</span>` : ""}
       ${driftBadge(candidate.drift)}
@@ -1035,7 +1307,7 @@ function renderChartDetail() {
                    <span class="headline">${escapeHtml(variant.effort_label)}${vFrontier ? ' <i class="fmark cyan">frontier</i>' : ""}</span>
                    <span class="mono">${idx(variant.score)} · ${
                      variant.priced ? `${credits(taskCredits(variant, state.view))} cr` : "unpriced"
-                   } · ${secs(budgetWait(variant))}</span>
+                   } · ${minutesText(loopMinutes(variant))}</span>
                  </button>`;
                })
                .join("")}
@@ -1119,7 +1391,13 @@ function renderLadder(view) {
   });
 
   box.querySelectorAll(".rung").forEach((rung) => {
-    rung.addEventListener("click", () => toggleVariant(rung.getAttribute("data-id")));
+    // The ladder lives on its own tab now; a rung opens its variant on the cost map.
+    rung.addEventListener("click", () => {
+      state.map = "cost";
+      renderMapTabs();
+      showPanel("map", { scroll: true });
+      selectVariant(rung.getAttribute("data-id"));
+    });
   });
 }
 
@@ -1336,24 +1614,28 @@ function renderDrift(drift, history, source) {
   makeSortable("drift", { index: 1, dir: -1 });
 }
 
-/* ---------- all models: score, price and the wait in one table ----------
+/* ---------- all models: score, price and time in one table ----------
 
    This used to be two tables — "how it feels" and "Copilot prices" — that repeated each
    other's columns. One row per variant now, because the interesting fact lives between
-   efforts of one model rather than between models. The wait filter uses the same ceilings as
+   efforts of one model rather than between models. The time filter uses the same ceilings as
    the patience switch, so the two speak one vocabulary. */
 
-const WAIT_FILTERS = [null, 10, 30, 90];
+function timeFilters() {
+  return [null, ...clockTicks()];
+}
 
 function renderWaitFilter() {
   const box = $("#wait-filter");
   if (!box) return;
-  box.innerHTML = WAIT_FILTERS.map(
-    (limit) =>
-      `<button class="toggle" data-limit="${limit ?? ""}" aria-pressed="${state.waitFilter === limit}">${
-        limit === null ? "Any wait" : `≤ ${limit} s`
-      }</button>`
-  ).join("");
+  box.innerHTML = timeFilters()
+    .map(
+      (limit) =>
+        `<button class="toggle" data-limit="${limit ?? ""}" aria-pressed="${state.waitFilter === limit}">${
+          limit === null ? "Any time" : `≤ ${limit} min`
+        }</button>`
+    )
+    .join("");
   box.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       const raw = button.getAttribute("data-limit");
@@ -1374,18 +1656,20 @@ function renderModels(view) {
   // worth showing next to them.
   const rows = [...view.candidates, ...(view.excluded || [])].filter((candidate) => {
     if (state.waitFilter === null) return true;
-    const wait = budgetWait(candidate);
-    return wait !== null && wait <= state.waitFilter;
+    const minutes = loopMinutes(candidate);
+    return minutes !== null && minutes !== undefined && minutes <= state.waitFilter;
   });
 
   rows.forEach((candidate) => {
-    const wait = budgetWait(candidate);
+    const minutes = loopMinutes(candidate);
+    const floor = candidate.speed && candidate.speed.task_minutes_floor_from;
+    const first = firstAnswer(candidate);
     const cr = taskCredits(candidate, view);
     const speed = candidate.speed || {};
     const drift = candidate.drift;
     const copilot = candidate.copilot;
-    // Under ten seconds you keep working; past half a minute you have gone to make coffee.
-    const feel = !wait ? "" : wait < 10 ? "while you watch" : wait < 30 ? "a pause" : "you look away";
+    // A loop under two minutes keeps you in the flow; past six you have gone to do something else.
+    const feel = !minutes ? "" : minutes < 2 ? "stay in the flow" : minutes <= 6 ? "a coffee" : "come back later";
     const marks = [
       candidate.available === false ? candidate.unavailable_reason : "",
       candidate.deprecated ? "retired by its vendor" : "",
@@ -1407,14 +1691,17 @@ function renderModels(view) {
             : `${candidate.terminal_bench.toFixed(0)}%`
         }</td>
         <td class="num" data-sort="${cr ?? ""}">${
-          cr === null ? '<span class="dim" title="Artificial Analysis has not priced it yet">not priced</span>' : credits(cr)
+          cr === null ? '<span class="dim" title="Artificial Analysis has not priced it">not priced</span>' : credits(cr)
         }</td>
-        <td class="num" data-sort="${wait ?? ""}">${secs(wait)}</td>
+        <td class="num" data-sort="${minutes ?? ""}" ${
+          floor ? `title="Not timed — ${escapeHtml(EFFORT_NAMES[floor] || floor)} already takes this long"` : ""
+        }>${floor ? "≥ " : ""}${minutesText(minutes)}</td>
         <td class="wait-cell" data-nosort>${
-          wait
-            ? `${bar(clockX(wait), "violet-fill")}<span class="dim feel">${feel}</span>`
+          minutes
+            ? `${bar(clockX(minutes), "violet-fill")}<span class="dim feel">${feel}</span>`
             : '<span class="dim feel">not timed</span>'
         }</td>
+        <td class="num dim" data-sort="${first ?? ""}">${secs(first)}</td>
         <td class="num" data-sort="${speed.tokens_per_second ?? ""}">${
           speed.tokens_per_second ? Math.round(speed.tokens_per_second) : "—"
         }</td>
@@ -1429,7 +1716,7 @@ function renderModels(view) {
   });
 
   // Sold by GitHub, but nobody has scored it at a named effort: its price is a fact, its
-  // quality is not known. Only shown while no wait filter is on — it has no wait to filter.
+  // quality is not known. Only shown while no time filter is on — it has no time to filter.
   if (state.waitFilter === null) {
     (view.copilot_only || []).forEach((model) => {
       body.append(
@@ -1438,7 +1725,7 @@ function renderModels(view) {
             <span class="dim" style="font-size:.75rem"> · not scored at a named effort</span></td>
           <td class="num" data-sort="">—</td><td class="num" data-sort="">—</td>
           <td class="num" data-sort="">—</td><td class="num" data-sort="">—</td><td></td>
-          <td class="num" data-sort="">—</td>
+          <td class="num" data-sort="">—</td><td class="num" data-sort="">—</td>
           <td class="num" data-sort="${model.drift ?? ""}">${model.drift ? Math.round(model.drift) : "—"}</td>
           <td class="num" data-sort="${model.output_usd ?? ""}">$${model.input_usd} / $${model.output_usd}</td>
         </tr>`)
@@ -1448,15 +1735,15 @@ function renderModels(view) {
 
   const note = $("#models-note");
   if (note) {
-    const timed = rows.filter((c) => budgetWait(c) !== null).length;
+    const timed = rows.filter((c) => loopMinutes(c) !== null && loopMinutes(c) !== undefined).length;
     note.textContent =
-      `${rows.length} variants${state.waitFilter === null ? "" : ` answer within ${state.waitFilter} s`}; ` +
-      `${timed} of them with a measured wait. Every number comes from Artificial Analysis, run on their ` +
-      `own hardware, except drift (AI Stupid Level, at each provider's default effort) and the ` +
-      `Copilot price. A variant with no wait is not slow — nobody has timed it. Waiting time is per ` +
-      `effort and never carried across efforts; typing speed belongs to the model, so a variant ` +
-      `that was not timed shows its family's. Coding is Terminal-Bench 4.0, shown for comparison ` +
-      `and never used to decide.`;
+      `${rows.length} variants${state.waitFilter === null ? "" : ` finish a task within ${state.waitFilter} min`}; ` +
+      `${timed} of them with a measured time per task. Every number comes from Artificial Analysis, run ` +
+      `on their own hardware, except drift (AI Stupid Level, at each provider's default effort) and the ` +
+      `Copilot price. Time per task is decode time with reasoning included; "≥" marks an effort nobody ` +
+      `timed, shown at the time its slower-thinking sibling below already takes. A model with no time ` +
+      `at all is not slow — nobody has timed it. Coding is Terminal-Bench 4.0, shown for comparison and ` +
+      `never used to decide.`;
   }
   makeSortable("models", { index: 1, dir: -1 });
 }
@@ -1477,8 +1764,8 @@ function renderMethod(view) {
     .join(", ");
   method.innerHTML = `
     <div>Quality, cost and time come from Artificial Analysis — Intelligence Index
-      v${escapeHtml(view.benchmark_version || "?")}, the cost of one index task, and the wait to the
-      first answer token — always for the effort level named on the card, and all from the same runs.
+      v${escapeHtml(view.benchmark_version || "?")}, the cost of one index task, and the time one task
+      takes — always for the effort level named on the card, and all from the same runs.
       Drift comes from AI Stupid Level and acts as a veto rather than another number in an average: a
       model on the way down loses to a comparable model that is holding steady.</div>
     <div>Roles are filled inside the selected tier's monthly credit budget, split
@@ -1488,9 +1775,11 @@ function renderMethod(view) {
       (at most $${thresholds.bargain_usd_per_pp.toFixed(2)} a point). Then the unused credits are spent,
       architect first, up to ${Math.round(assumptions.target_utilisation * 100)}% of the tier. A lower
       role never costs more per task, or scores more, than the role above it.</div>
-    <div>Patience sets the longest wait before the first answer the loop roles may put you through:
-      ${escapeHtml(levels)}. The architect is never on this clock. A variant that was not timed is not
-      treated as slow.</div>
+    <div>Patience sets the longest a loop role may take over one task — Artificial Analysis's time per
+      index task, reasoning included: ${escapeHtml(levels)}. You iterate with the worker and the scout,
+      so one slow loop makes the whole session slow; the architect plans once and is never on this
+      clock. A variant nobody timed is not treated as slow, unless a lower effort of the same model
+      already takes longer than the limit.</div>
     <div>The board is limited to models we can actually start: a model has to appear on GitHub's
       Copilot pricing page, and not be one this organisation has switched off
       (${escapeHtml(disabled || "none")}). A model Artificial Analysis has scored but not yet priced is
@@ -1524,7 +1813,8 @@ function renderAll({ animate = false } = {}) {
   renderGaps((current && current.gaps) || []);
   renderTasks(view);
   hideTip();
-  renderScatter(view);
+  renderMapTabs();
+  renderMap(view);
   renderFamilyPicker(view);
   renderLadder(view);
   /* The panel quotes today's role picks, so it follows the tier switch and every refresh. */
@@ -1545,6 +1835,18 @@ async function load({ animate = false } = {}) {
   if (!plans[state.tier]) {
     const remembered = stored(TIER_STORAGE_KEY);
     state.tier = remembered && plans[remembered] ? remembered : view.default_tier;
+  }
+  if (!MAPS[state.map]) {
+    // A link can name the chart (?map=time), so a colleague lands on the one being discussed.
+    const linked = new URLSearchParams(location.search).get("map");
+    const remembered = stored("kvasir.map");
+    state.map = MAPS[linked] ? linked : MAPS[remembered] ? remembered : "cost";
+    if (new URLSearchParams(location.search).get("market") === "1") {
+      state.market = true;
+      const button = $("#toggle-market");
+      button.setAttribute("aria-pressed", "true");
+      button.textContent = "Only what we can start";
+    }
   }
   const levels = (view.patience || []).map((p) => p.id);
   if (!levels.includes(state.patience)) {
@@ -1568,8 +1870,18 @@ $("#toggle-all").addEventListener("click", (event) => {
   load();
 });
 
-/* The value-sits section: one switch widens the ladder to every variant, clicks on dots and
-   rungs open the shared detail panel. Delegation survives the re-renders. */
+/* The market is context, not choice: it draws behind the board and changes no verdict — the
+   switch above the cards is the one that opens the board itself. */
+$("#toggle-market").addEventListener("click", (event) => {
+  state.market = !state.market;
+  event.currentTarget.setAttribute("aria-pressed", String(state.market));
+  event.currentTarget.textContent = state.market ? "Only what we can start" : "Show the rest of the market";
+  hideTip();
+  renderMap(state.view);
+});
+
+/* One switch widens the ladder to every variant; clicks on dots and rungs open the shared
+   detail panel. Delegation survives the re-renders. */
 $("#toggle-ladder").addEventListener("click", (event) => {
   state.everyVariant = !state.everyVariant;
   event.currentTarget.setAttribute("aria-pressed", String(state.everyVariant));

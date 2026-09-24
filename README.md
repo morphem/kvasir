@@ -10,7 +10,7 @@ One page that merges three sources into one answer, and keeps the history behind
 
 | Source | What it contributes |
 |---|---|
-| [Artificial Analysis](https://artificialanalysis.ai/models) | Intelligence Index, cost per task and the wait to the first answer — **always per effort level**, all from the same runs |
+| [Artificial Analysis](https://artificialanalysis.ai/models) | Intelligence Index, cost per task and time per task — **always per effort level**, all from the same runs |
 | [AI Stupid Level](https://aistupidlevel.info/) | Drift: whether a model is quietly getting worse under the same name |
 | [GitHub Copilot docs](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) | What our Copilot enables, and what a million tokens costs |
 
@@ -27,11 +27,15 @@ month of ordinary work costs in credits, and how much headroom is left. The rate
 [`docs/credits.md`](docs/credits.md) for the verified quotes, the workload model, and what each
 tier turns out to afford.
 
-The second switch is **patience**: how long the worker and the scout may keep you waiting before
-the first answer (Fast, Balanced, Any). Reasoning effort *is* the waiting — the same model can
-answer in 13 seconds at one effort and three minutes at the next — so the roles you wait on all
-day are filled only from variants that answer inside the limit. The architect is never on that
-clock.
+The second switch is **patience**: how long one task may take on the worker and the scout (Fast,
+Balanced, Any). Those are the roles you iterate with — prompt, read, correct, prompt again — so one
+slow loop makes the whole session slow; the same model can finish a task in a minute at one effort
+and seven at another. The architect plans once and is never on that clock.
+
+The first tab is the **map**: intelligence against cost per task, time per task and output tokens
+per task, drawn the way Artificial Analysis draws them — a split in each axis, the top-left quadrant
+marked as the place to shop, the Pareto line through what nothing beats. Links can name a chart
+(`?map=time`) and draw the rest of the market behind our board for scale (`&market=1`).
 
 Every reading is archived in SQLite, deduplicated by content hash, so the page behaves like a
 weather report while the database keeps the climate record.

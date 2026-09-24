@@ -610,3 +610,59 @@ section[data-panel="value"] ~ section[data-panel="value"] { margin-top: 3rem; }
   .topbar-right .tier-tab { padding: 0.42rem 0.5rem; }
   .topbar-right .tier-tab span { display: block; white-space: normal; }
 }
+
+/* ---- the map ----
+   Artificial Analysis's frame in the house colours: the attractive quadrant takes the "fits"
+   cyan at a whisper, the opposite one a grey, and the splits are hairlines named at the axis. */
+.map-tabs { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 1.1rem; }
+.map-tab {
+  font: inherit; font-size: 0.9rem; font-weight: 600; letter-spacing: -0.01em;
+  background: transparent; color: var(--dim); cursor: pointer;
+  border: 1px solid var(--edge); border-radius: 10px; padding: 0.5rem 0.95rem;
+}
+.map-tab:hover { color: var(--text); border-color: var(--dim); }
+.map-tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.map-tab[aria-selected="true"] {
+  color: var(--text); background: rgba(56, 225, 196, 0.1); border-color: rgba(56, 225, 196, 0.5);
+}
+.map-key { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-bottom: 0.8rem; font-size: 0.8rem; color: var(--dim); }
+.map-key span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.map-key i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.map-key i.key-quadrant { border-radius: 2px; background: rgba(56, 225, 196, 0.16); border: 1px solid rgba(56, 225, 196, 0.4); }
+.map-key i.key-pareto { width: 18px; height: 0; border-radius: 0; border-top: 2px dotted var(--cyan); }
+.map-key i.key-ghost { background: none; border: 1.5px solid #5b6477; }
+
+#scatter .quad-best { fill: rgba(56, 225, 196, 0.07); }
+#scatter .quad-worst { fill: rgba(139, 151, 168, 0.045); }
+#scatter .quad-label { fill: var(--cyan); opacity: 0.75; font: 600 12px var(--sans); }
+#scatter .grid { stroke: #1c2333; stroke-width: 1; }
+#scatter .tick-label { fill: var(--dim); font: 12px var(--mono); }
+#scatter .axis-label { fill: var(--dim); font: 11px var(--mono); letter-spacing: 1.6px; }
+#scatter .split { stroke: #3a4257; stroke-width: 1.2; }
+#scatter .split.second { stroke-dasharray: 4 5; }
+#scatter .split-label { fill: var(--dim); font: 11px var(--mono); }
+#scatter .pareto { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 1.5 5; stroke-linecap: round; opacity: 0.8; }
+#scatter .cross { stroke: #8b97a8; stroke-width: 1; stroke-dasharray: 3 4; }
+#scatter circle.dot { opacity: 0.9; }
+#scatter circle.ring { stroke: var(--ink); stroke-width: 2; }
+#scatter circle.ghost { stroke: #5b6477; stroke-width: 1.5; }
+#scatter .pt-label { font: 12px var(--mono); fill: var(--dim); pointer-events: none; }
+#scatter .pt-label.pick { font: 600 13px var(--sans); }
+/* The move between charts: each point is a group whose transform changes, and this is what
+   turns that change into motion. */
+#scatter g.pt { transition: transform 0.6s cubic-bezier(0.3, 0.1, 0.2, 1); }
+#scatter g.pt circle.hit { cursor: pointer; }
+
+.clock.floor .clock-bar { background: repeating-linear-gradient(90deg, var(--cyan) 0 5px, transparent 5px 8px); }
+.clock.floor .clock-bar.free { background: repeating-linear-gradient(90deg, var(--dim) 0 5px, transparent 5px 8px); }
+
+@media (prefers-reduced-motion: reduce) {
+  #scatter g.pt { transition: none; }
+}
+.tip[hidden] { display: none; }
+@media (max-width: 700px) {
+  /* At phone width a 1000-unit chart prints its labels at a third of their size. It keeps a
+     readable size and scrolls sideways inside its frame instead. */
+  .scatter-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #scatter { min-width: 760px; }
+}
