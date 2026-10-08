@@ -39,8 +39,9 @@ TIERS = [
         "name": "Scout",
         "role": "Cheap, simple, repetitive",
         "description": (
-            "The cheapest agent, for mechanical work: moving files, renaming things, calling a "
-            "tool another agent prepared, checking something quickly."
+            "The cheapest agent that is good enough — at least three quarters of the leader's "
+            "score — for mechanical work: moving files, renaming things, calling a tool another "
+            "agent prepared, checking something quickly."
         ),
         "accent": "dim",
     },

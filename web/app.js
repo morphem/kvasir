@@ -1776,10 +1776,12 @@ function renderMethod(view) {
     <div>Roles are filled inside the selected tier's monthly credit budget, split
       ${Math.round(assumptions.budget_shares.architect * 100)}/${Math.round(assumptions.budget_shares.worker * 100)}/${Math.round(assumptions.budget_shares.scout * 100)}:
       the architect takes the best model its share affords, the worker climbs the value ladder while
-      a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}, the scout takes bargains only
-      (at most $${thresholds.bargain_usd_per_pp.toFixed(2)} a point). Then the unused credits are spent,
-      architect first, up to ${Math.round(assumptions.target_utilisation * 100)}% of the tier. A lower
-      role never costs more per task, or scores more, than the role above it.</div>
+      a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}. The scout takes the cheapest model
+      that is good enough: at least ${Math.round(thresholds.scout_bar * 100)}% of the leader's score. A
+      share of the leader rather than a fixed score, because the index is re-based between versions and
+      the market climbs. Then the unused credits are spent on the architect, then the worker — never on
+      the scout — up to ${Math.round(assumptions.target_utilisation * 100)}% of the tier. A lower role
+      never costs more per task, or scores more, than the role above it.</div>
     <div>Patience sets the longest a loop role may take over one task — Artificial Analysis's time per
       index task, reasoning included: ${escapeHtml(levels)}. You iterate with the worker and the scout,
       so one slow loop makes the whole session slow; the architect plans once and is never on this

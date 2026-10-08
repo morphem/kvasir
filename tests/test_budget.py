@@ -231,3 +231,63 @@ def test_a_scout_never_opens_dearer_than_its_worker():
         assert roles["worker"]["pick"]["key"] == "c"
         assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
         assert roles["scout"]["pick"]["key"] == "a"
+
+
+def test_the_scout_is_the_cheapest_variant_over_the_bar():
+    """Not the best the tier buys: the cheapest that reaches SCOUT_BAR of the leader."""
+    payload = view()
+    priced = [c for c in payload["candidates"] if c["priced"] and c["available"]]
+    leader = max(c["score"] for c in priced)
+    for tier_id, by_patience in payload["plans"].items():
+        for patience_id, plan in by_patience.items():
+            scout = plan["roles"]["scout"]
+            bar = scout["bar"]
+            assert bar["share"] == budget.SCOUT_BAR
+            assert bar["score"] == round(leader * budget.SCOUT_BAR, 1)
+            if scout["under_bar"]:
+                assert "Nothing at 75%" in scout["why"]
+                continue
+            pick = scout["pick"]
+            assert pick["score"] >= bar["score"]
+            ceiling = budget.PATIENCE[patience_id]["scout"]
+            cheaper = [
+                c for c in priced
+                if c["score"] >= bar["score"]
+                and c["cost_uusd"] < pick["cost_uusd"]
+                and budget.quick_enough(c, ceiling)
+            ]
+            assert not cheaper, f"{tier_id}/{patience_id}: {cheaper[0]['label']} was cheaper"
+
+
+def test_the_surplus_never_buys_up_the_scout():
+    """An unused credit buys the architect and the worker quality; the scout stays cheap."""
+    for plan in every_plan(view()):
+        assert not plan["roles"]["scout"]["upgraded_from"]
+
+
+def test_a_cheaper_variant_too_slow_for_the_scout_is_named():
+    rows = [
+        aa_row("top", "max", 60.0, 5_000_000, minutes=2.0),
+        aa_row("slowcheap", "max", 46.0, 100_000, minutes=6.0),  # over the bar, too slow
+        aa_row("quick", "low", 47.0, 200_000, minutes=1.0),
+        aa_row("weak", "low", 30.0, 10_000, minutes=0.5),  # quick and cheap, under the bar
+    ]
+    payload = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
+    balanced = payload["plans"]["heavy"]["balanced"]["roles"]["scout"]
+    assert balanced["pick"]["key"] == "quick"
+    assert balanced["speed_blocked"]["label"] == "Slowcheap · Max"
+    anything = payload["plans"]["heavy"]["any"]["roles"]["scout"]
+    assert anything["pick"]["key"] == "slowcheap"
+
+
+def test_a_scout_with_nothing_over_the_bar_takes_the_best_that_fits_and_says_so():
+    rows = [
+        aa_row("top", "max", 60.0, 5_000_000, minutes=2.0),
+        aa_row("weak", "low", 30.0, 10_000, minutes=0.5),
+        aa_row("weaker", "low", 25.0, 5_000, minutes=0.5),
+    ]
+    payload = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
+    scout = payload["plans"]["heavy"]["fast"]["roles"]["scout"]
+    assert scout["under_bar"] is True
+    assert scout["pick"]["key"] == "weak"
+    assert "Nothing at 75% of the leader (45.0)" in scout["why"]

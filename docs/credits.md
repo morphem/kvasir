@@ -82,19 +82,47 @@ were not re-derived — treat that as an open question, not as a tuned result.
   concerned, buy the best you can afford. Never on the patience clock.
 - **Worker** — climbs the cost/quality frontier while each step costs at most **$0.75 per
   point** and still fits its share.
-- **Scout** — climbs only while a step is a **bargain (≤ $0.15 per point)**. Mechanical work does
-  not repay more.
+- **Scout** — the **cheapest variant that is good enough**: at least **75% of the leader's score**
+  (`SCOUT_BAR`), within the scout's patience and its share. Mechanical work does not repay quality
+  past "enough", and the scout should not change when a tier does. The bar is a share of the
+  leader, not a fixed score, because the Intelligence Index is re-based between versions and the
+  market climbs at a given price. 75% was chosen on 2026-10-09 as "three quarters of the frontier",
+  before looking at who it seats. When nothing over the bar is quick enough and affordable, the
+  scout takes the best that is, and the card says it is under the bar. Until 2026-10-09 the scout
+  climbed while a step was a bargain (≤ $0.15 per point) — the best its share could buy.
 - **Patience** — the worker and the scout only climb a frontier rebuilt from the variants that
   finish a task inside the selected time: **Fast** 3 / 1.5 minutes, **Balanced** 6 / 3, **Any** no
   limit (worker / scout, Artificial Analysis's time per index task). These are the roles you iterate
   with, so the length of one loop is the length of the job. A variant nobody timed passes, unless a
   lower effort of the same model already takes longer — then it is held to that time.
-- **Surplus** — once the economical picks are in, the plan spends the tier up to 80%, architect
-  first, and never past 90%. A lower role may not score more, or cost more per task, than the role
+- **Surplus** — once the economical picks are in, the plan spends the tier up to 80% on the
+  architect, then the worker — never on the scout — and never past 90%. A lower role may not score more, or cost more per task, than the role
   above it, and may not land on another role's exact variant.
 
-Both per-point ceilings are the same thresholds the value ladder shows on the page, so nothing here
-is a private knob.
+The per-point ceilings are the same thresholds the value ladder shows on the page, and the scout's
+bar is printed in the method panel, so nothing here is a private knob.
+
+## Since 2026-10-09: the scout at 75% of the leader (data of 2026-10-08)
+
+Leader: Opus 5.5 · Max at 57.6, so the bar is 43.2.
+
+| Tier · patience | Architect | Worker | Scout | Month | Used |
+|---|---|---|---|---|---|
+| **Basic** · Fast | Opus 5.5 · Max | GPT-6.1 Sol · Medium | GPT-6.1 Sol · Low (under the bar) | ~10,970 cr | 84% |
+| **Basic** · Balanced | Opus 5.5 · Extra High | GPT-6.1 Sol · Extra High | GPT-6.1 Sol · Medium | ~9,100 cr | 70% |
+| **Basic** · Any | Opus 5.5 · Extra High | GPT-6.1 Sol · Max | Claude Haiku 5.5 · Max | ~11,490 cr | 88% |
+| **Heavy** · Balanced | Opus 5.5 · Max | Opus 5.5 · High | GPT-6.1 Sol · Medium | ~23,110 cr | 23% |
+| **Heavy** · Any | Opus 5.5 · Max | Opus 5.5 · Extra High | Claude Haiku 5.5 · Max | ~34,960 cr | 35% |
+
+Power picks what Heavy picks, at half the share of its tier. At **Any**, Haiku 5.5 · Max (43.4,
+$0.213 a task) is the cheapest variant over the bar, by a tenth of a cent ahead of GPT-6.1 Sol ·
+Medium (47.8, $0.214); it takes 7.1 minutes a task, so at Balanced (3 min for the scout) Sol takes
+the seat and the card names Haiku as the cheaper variant patience ruled out. At **Fast** (1.5 min)
+nothing over the bar is quick enough. Heavy and Power use less of the tier than before, because the
+scout is no longer bought up: the architect is at the top of the board and the worker is held under
+it, so the plan stops and says so.
+
+The section below is the analysis under the earlier scout rule, kept as it was.
 
 ## What that produces for these tiers (data of 2026-09-24, Balanced patience)
 

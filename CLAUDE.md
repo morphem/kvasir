@@ -126,12 +126,18 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   drawn hollow and kept off the Pareto line.
 - **An allowance is spent, not hoarded — but never silently.** Unused credits pool back to the
   billing entity, so the plan buys up to `TARGET_UTILISATION` and stops at `MAX_UTILISATION`.
-  Surplus goes in role order (architect first); a role may not climb onto another role's exact
+  Surplus goes in role order (architect, then worker — never the scout); a role may not climb onto another role's exact
   variant, and a lower role may not score more *or cost more per task* than the role above it (at
   Heavy/Fast the quick frontier once put Opus 5 · Medium on the scout at 219 credits under a 182-credit
   worker). One model at three efforts is allowed — on the September data Opus 5.5 leads at every
   price from $0.55 up, and effort is the dial between the roles. When the plan stops short it records `stopped_because`: an unspent tier is either a
   finding or a fault, and the difference is the reason printed next to it.
+- **The scout is the cheapest that is good enough, not the best the tier buys.** `SCOUT_BAR`
+  (75% of the leader's score, owner's call on 2026-10-09) within patience and the scout's share.
+  A share of the leader, never a fixed score: the index re-bases between versions and the market
+  climbs. The bar was set before looking at who it seats — re-tuning it until a favourite wins is
+  the same falsification as re-tuning the workload model. Nothing over the bar that fits → the
+  best that fits, flagged `under_bar` on the card, never an invented pick.
 - **Every deploy a user can see adds a changelog entry — that is the version bump.**
   `kvasir/changelog.py` is the single source: `VERSION` is its newest entry, `/api/changelog`
   serves it, and the page compares it with the last version the browser showed

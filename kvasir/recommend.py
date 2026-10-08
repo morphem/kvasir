@@ -462,5 +462,6 @@ def build(
         "thresholds": {
             "bargain_usd_per_pp": budget.BARGAIN_USD_PER_PP,
             "fair_usd_per_pp": budget.FAIR_USD_PER_PP,
+            "scout_bar": budget.SCOUT_BAR,
         },
     }

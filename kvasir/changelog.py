@@ -17,6 +17,31 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.5",
+        "date": "2026-10-09",
+        "title": "The scout: cheapest that is good enough",
+        "items": [
+            {
+                "text": "The scout is now the cheapest model that is good enough: at least 75% of the "
+                "leader's score, within your patience. It used to be the best model its slice of the "
+                "tier could buy. Mechanical work does not pay for quality past \"enough\", and the "
+                "scout no longer changes when a tier does.",
+                "where": {"panel": "budget"},
+            },
+            {
+                "text": "The bar is a share of the leader, not a fixed score, so it rises with the "
+                "market and survives a new index version. When nothing over the bar is quick enough "
+                "(Fast patience, today), the card says so and names the best that is.",
+                "where": {"panel": "budget"},
+            },
+            {
+                "text": "Unused credits now go to the architect and the worker only. A tier that "
+                "stops short says why: the scout stays cheap on purpose.",
+                "where": {"panel": "budget"},
+            },
+        ],
+    },
+    {
         "version": "2.4",
         "date": "2026-10-08",
         "title": "Claude Haiku 5.5, and the board moving again",
