@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 
-from conftest import fixture
+from conftest import fixture, september_board
 
 from kvasir import budget, db, recommend
 from kvasir.collectors import artificialanalysis, copilot, stupidlevel
@@ -12,7 +12,7 @@ from kvasir.config import Settings
 
 
 def build(disabled=None, show_all=False):
-    aa, _ = artificialanalysis.parse(fixture("artificialanalysis-model-page.html"))
+    aa, _ = september_board()
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, meta = copilot.parse(fixture("copilot-models-and-pricing.html"))
     settings = Settings()
@@ -156,11 +156,11 @@ def test_patience_decides_the_loop_roles_only():
 def seed_archive(path: str) -> None:
     db.init(path)
     for module, name in (
-        (artificialanalysis, "artificialanalysis-model-page.html"),
+        (artificialanalysis, None),
         (stupidlevel, "stupidlevel-scores.json"),
         (copilot, "copilot-models-and-pricing.html"),
     ):
-        rows, meta = module.parse(fixture(name))
+        rows, meta = module.parse(fixture(name)) if name else september_board()
         db.archive(path, module.SOURCE, rows, meta)
 
 
@@ -187,7 +187,7 @@ def test_capture_refuses_an_incomplete_board():
     """Half the sources is not a verdict; writing one down would be inventing history."""
     path = os.path.join(tempfile.mkdtemp(prefix="kvasir-rec-"), "kvasir.db")
     db.init(path)
-    rows, _ = artificialanalysis.parse(fixture("artificialanalysis-model-page.html"))
+    rows, _ = september_board()
     db.archive(path, "artificialanalysis", rows, {})
     assert recommend.capture(path, Settings()) is False
     assert db.archive_stats(path)["recommendations"] == 0

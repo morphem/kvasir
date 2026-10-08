@@ -17,6 +17,24 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.4",
+        "date": "2026-10-08",
+        "title": "Claude Haiku 5.5, and the board moving again",
+        "items": [
+            {
+                "text": "Claude Haiku 5.5 is on the board at all five efforts, low to max. Copilot "
+                "sells it, and Artificial Analysis has scored, priced and timed it.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+            {
+                "text": "From 7 to 8 October the Artificial Analysis chip was amber and the board "
+                "showed the 7 October reading. The site had moved its table, and Kvasir refused a "
+                "half-read page rather than show it. It now reads the new layout, so newer "
+                "releases and re-runs are back.",
+            },
+        ],
+    },
+    {
         "version": "2.3",
         "date": "2026-09-24",
         "title": "A light face",

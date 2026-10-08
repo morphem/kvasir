@@ -4,7 +4,8 @@ Each collector is a module with three things:
 
     SOURCE  — stable id, also the key used in the database and the API
     URL     — where the data comes from, shown in the UI next to every number
-    parse() — pure function from raw response text to (rows, meta)
+    parse() — pure function from raw response text to (rows, meta) (Artificial Analysis has
+              parse_board(), parse_variant() and merge() instead: its data spans pages)
     fetch() — network wrapper around parse()
 
 Keeping parse() pure is what makes the parsers testable against the saved fixtures in

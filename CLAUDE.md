@@ -47,11 +47,15 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   by lookup table. A new model must land correctly without a code change; add to `ALIASES` only
   what the rules genuinely cannot reach.
 - **Artificial Analysis is read from its RSC payload, not its JSON-LD.** The schema.org blocks
-  carry only the top twenty of each chart; the `self.__next_f.push` stream on any model page
-  carries all ~665 variants as plain JSON objects. That stream is their implementation detail, not
-  an API — hence `MIN_ROWS`/`MIN_PRICED`. Their `/data/*.txt` chart file is encrypted: leave it
-  alone. Read the record's `release.name` for the model and `effort.slug` for the effort; a
-  non-reasoning mode gets no effort and never reaches the board.
+  carry only the top twenty of each chart. Since 2026-10-07 the `self.__next_f.push` stream is
+  split: `/leaderboards/models` has every variant's numbers in one table, but no identity and no
+  time per task; those are only on each variant's own page. A run reads the leaderboard and reads a
+  page only for a slug the archive does not know, or for a priced variant whose score or cost
+  moved (`needs_page`). Identity comes from the page — `release.name` for the model,
+  `effort.slug` for the effort — never from the display name: deriving it from the name got 79 of
+  665 wrong. A non-reasoning mode gets no effort and never reaches the board. The stream is their
+  implementation detail, not an API — hence `MIN_ROWS`/`MIN_PRICED`. Their free API has no cost or
+  time per task, and their `/data/*.txt` chart file is encrypted: leave both alone.
 - **A release is timed before it is priced.** GPT-6 Luna and Sol arrived scored and timed but with
   no cost per task. `cost_uusd` stays `None`, the candidate is `priced: false`, and it is shown but
   never planned. Never estimate the price from token counts — the cache-hit share alone moves it 3×.

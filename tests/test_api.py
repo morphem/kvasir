@@ -1,6 +1,6 @@
 """The HTTP surface, served from an archive the test filled in."""
 
-from conftest import fixture
+from conftest import fixture, september_board
 from fastapi.testclient import TestClient
 
 from kvasir import db
@@ -13,11 +13,11 @@ def seed():
     """Fill the archive the way a real collection round would — snapshot plus run log."""
     db.init(settings.db_path)
     for module, name in (
-        (artificialanalysis, "artificialanalysis-model-page.html"),
+        (artificialanalysis, None),
         (copilot, "copilot-models-and-pricing.html"),
         (stupidlevel, "stupidlevel-scores.json"),
     ):
-        rows, meta = module.parse(fixture(name))
+        rows, meta = module.parse(fixture(name)) if name else september_board()
         started = db.now_iso()
         snapshot_id, changed = db.archive(settings.db_path, module.SOURCE, rows, meta)
         db.log_run(

@@ -14,22 +14,35 @@ time from the same runs — which is why this is the source the board is scored 
 2026-09-22.
 
 Read from: the page's **React Server Components payload** — the `self.__next_f.push([1, "…"])`
-scripts Next.js streams every page with. The full table sits in it as plain JSON objects, one per
-variant, each opening with its id and slug; the collector reassembles the stream, decodes those
-objects with the standard library and ignores everything else. **Every model page carries every
-model** (665 variants on 2026-09-22), so the URL is an entry point, not a subject — it is
-`KVASIR_AA_URL`, because the page it names could be retired.
+scripts Next.js streams every page with. The collector reassembles the stream, decodes the JSON
+it needs with the standard library and ignores everything else. Until 2026-10-07 every model page
+carried every variant (665 on 2026-09-22). Since then the data is in two places:
+
+- **The leaderboard** (`KVASIR_AA_BOARD_URL`, `/leaderboards/models`) has one flat table with
+  every variant (697 on 2026-10-08): score, cost per task, speed, the wait to the first answer.
+  It is read on every run.
+- **A variant's own page** (`/models/<slug>`) has the full record: `release.name` and
+  `effort.slug` (who it is), the release date, the tokens and the time per task. The leaderboard
+  has none of these.
+
+A run reads the leaderboard, then a variant page only when the archive cannot answer: a slug it
+has never seen, or a priced variant whose score or cost moved (new runs, so a new time). The rest
+keep the identity and the clock they were archived with, by slug. Variants that lose the
+(model, effort) fold are kept in the snapshot's `folded` metadata, so they are not read again.
+A fresh database reads every page once (~700); after that a run reads a handful. The leaderboard
+and page numbers were checked to be equal when this split was made.
 
 Three things that are *not* the data, and why the collector does not use them:
 
 - The **schema.org `Dataset` blocks** (JSON-LD) carry only the top twenty of each chart. The old
   speed reader used them, which is why Sonnet 5, Terra and Sol "had no speed" in September.
 - The `/data/*.txt` file the site's own charts load is **encrypted**. It is left alone.
-- Their REST API needs a key, and was not needed.
+- Their free REST API (`/api/v2/data/llms/models`, key required) has the score, token prices and
+  speed, but **no cost per task, no time per task and no effort**: the board cannot be built from it.
 
 This payload is an implementation detail of their site, not an API. The parser therefore refuses
-a half-read page: fewer than `MIN_ROWS` variants or `MIN_PRICED` priced ones raises, the run log
-records it, and the page keeps the last good reading.
+a half-read page: fewer than `MIN_ROWS` variants or `MIN_PRICED` priced ones raises, and so does a
+variant page that does not answer. The run log records it, and the page keeps the last good reading.
 
 What each field means, and how it is used:
 

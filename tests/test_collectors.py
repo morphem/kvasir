@@ -9,22 +9,122 @@ from conftest import fixture
 
 from kvasir.collectors import artificialanalysis, copilot, stupidlevel
 
-AA_PAGE = "artificialanalysis-model-page.html"
+AA_BOARD = "artificialanalysis-leaderboard.html"
+AA_VARIANT = "artificialanalysis-variant-page.html"
+# A model page from September 2026, when every page carried every variant. Its records have the
+# shape a variant page still has, so it tests _row() on 665 of them.
+AA_RECORDS = "artificialanalysis-model-page.html"
 
 
-def test_artificialanalysis_reads_the_whole_board():
-    """Every model page carries every variant — not just the top twenty of a chart."""
-    rows, meta = artificialanalysis.parse(fixture(AA_PAGE))
+def aa_variant(slug: str) -> dict:
+    return artificialanalysis.parse_variant(fixture(AA_RECORDS), slug)[0]
+
+
+def aa_known(board: list[dict]) -> dict[str, dict]:
+    """An archive that knows every variant, as a run after the first one has it."""
+    return {
+        entry["slug"]: {
+            "model_key": entry["slug"],
+            "effort": "default",
+            "vendor": "",
+            "released": "",
+            "source_slug": entry["slug"],
+            "output_tokens": None,
+            "task_seconds": 60.0,
+            **artificialanalysis._measured(entry),
+        }
+        for entry in board
+    }
+
+
+def test_artificialanalysis_reads_the_whole_leaderboard():
+    """The leaderboard carries every variant — not just the top twenty of a chart."""
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    assert len(board) == 697
+    priced = [entry for entry in board if entry.get("intelligenceIndexCostPerTask") is not None]
+    assert len(priced) == 185
+    # A priced score is a measured one; estimates are for variants nobody ran the index on.
+    assert not any(entry.get("intelligenceIndexIsEstimated") for entry in priced)
+
+
+def test_artificialanalysis_reads_a_variant_page():
+    row, version = artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-haiku-5-5-low")
+    assert version == "4.3"
+    assert (row["model_key"], row["effort"]) == ("haiku-5.5", "low")
+    assert row["cost_uusd"] == 24_459
+    assert row["task_seconds"] == 62.4
+    assert row["released"] == "2026-10-07"
+
+
+def test_artificialanalysis_reads_a_slug_with_dots_and_capitals():
+    """Eight slugs on the board are not lowercase kebab; each must still find its record."""
+    raw = fixture(AA_VARIANT).replace("claude-haiku-5-5-low", "QwQ-0.6b-Preview")
+    row, _ = artificialanalysis.parse_variant(raw, "QwQ-0.6b-Preview")
+    assert row["source_slug"] == "QwQ-0.6b-Preview"
+
+
+def test_artificialanalysis_leaderboard_numbers_match_the_variant_page():
+    """Numbers come from the leaderboard, identity and clock from the page: same runs, same digits."""
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    entry = next(entry for entry in board if entry["slug"] == "claude-haiku-5-5-low")
+    row, _ = artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-haiku-5-5-low")
+    measured = artificialanalysis._measured(entry)
+    assert measured == {key: row[key] for key in measured}
+
+
+def test_artificialanalysis_reads_a_page_only_when_the_archive_cannot_answer():
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    entry = next(entry for entry in board if entry["slug"] == "claude-haiku-5-5-low")
+    row, _ = artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-haiku-5-5-low")
+    assert artificialanalysis.needs_page(entry, None)  # never seen
+    assert not artificialanalysis.needs_page(entry, row)  # nothing moved
+    assert artificialanalysis.needs_page(entry, dict(row, cost_uusd=1))  # re-run: a new clock
+    assert artificialanalysis.needs_page(entry, dict(row, task_seconds=None))  # priced, untimed
+    assert not artificialanalysis.needs_page(entry, None, folded=True)
+    unpriced = next(e for e in board if e.get("intelligenceIndexCostPerTask") is None)
+    assert not artificialanalysis.needs_page(unpriced, {"score": -1, "cost_uusd": None})
+
+
+def test_artificialanalysis_merge_takes_numbers_from_the_board_and_time_from_the_page():
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    known = aa_known(board)
+    row, _ = artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-haiku-5-5-low")
+    known.pop("claude-haiku-5-5-low")
+    rows, meta = artificialanalysis.merge(
+        board, known, {}, {"claude-haiku-5-5-low": row}, "4.3"
+    )
+    haiku = next(r for r in rows if r["source_slug"] == "claude-haiku-5-5-low")
+    assert haiku == row
     assert meta["benchmark_version"] == "4.3"
-    assert meta["row_count"] == len(rows) == 593
-    assert meta["priced_count"] == 142
-    assert len({(row["model_key"], row["effort"]) for row in rows}) == len(rows)
+    assert meta["row_count"] == len(rows) == 697
+
+
+def test_artificialanalysis_merge_folds_variants_and_remembers_the_losers():
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    known = aa_known(board)
+    known["claude-haiku-5-5-low"]["model_key"] = known["claude-haiku-5-5"]["model_key"]
+    rows, meta = artificialanalysis.merge(board, known, {}, {}, "4.3")
+    assert len({(r["model_key"], r["effort"]) for r in rows}) == len(rows) == 696
+    assert set(meta["folded"]) == {"claude-haiku-5-5-low"}
+    # The next run knows the loser without its page, and folds it again.
+    known.pop("claude-haiku-5-5-low")
+    again, _ = artificialanalysis.merge(board, known, meta["folded"], {}, "4.3")
+    assert len(again) == 696
+
+
+def test_artificialanalysis_merge_refuses_a_variant_it_cannot_identify():
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    known = aa_known(board)
+    known.pop("claude-haiku-5-5-low")
+    with pytest.raises(ValueError):
+        artificialanalysis.merge(board, known, {}, {}, "4.3")
 
 
 def test_artificialanalysis_keeps_effort_per_row():
-    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
-    opus = {row["effort"]: row for row in rows if row["model_key"] == "opus-5.5"}
-    assert set(opus) == {"low", "medium", "high", "xhigh", "max"}
+    opus = {e: aa_variant(f"claude-opus-5-5-{e}") for e in ("low", "medium", "high", "xhigh")}
+    opus["max"] = aa_variant("claude-opus-5-5")
+    assert {effort: row["effort"] for effort, row in opus.items()} == {e: e for e in opus}
+    assert {row["model_key"] for row in opus.values()} == {"opus-5.5"}
     assert opus["max"]["score"] == 57.6
     assert opus["max"]["cost_uusd"] == 5_982_012
     assert opus["high"]["first_answer_seconds"] == 12.7
@@ -36,33 +136,33 @@ def test_artificialanalysis_keeps_effort_per_row():
 
 
 def test_artificialanalysis_money_is_integer_micro_dollars():
-    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
+    board = artificialanalysis.parse_board(fixture(AA_BOARD))
+    rows, _ = artificialanalysis.merge(board, aa_known(board), {}, {}, "4.3")
     priced = [row for row in rows if row["cost_uusd"] is not None]
     assert priced and all(isinstance(row["cost_uusd"], int) for row in priced)
 
 
 def test_artificialanalysis_keeps_an_unpriced_release_unpriced():
     """GPT-6 was timed and scored on release day, but not priced — never invent the price."""
-    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
-    luna = [row for row in rows if row["model_key"] == "gpt-6-luna"]
-    assert luna and all(row["cost_uusd"] is None for row in luna)
+    luna = [aa_variant(slug) for slug in ("gpt-6-luna-xhigh", "gpt-6-luna-medium")]
+    assert all(row["cost_uusd"] is None for row in luna)
     assert all(row["score"] is not None for row in luna)
 
 
 def test_artificialanalysis_gives_non_reasoning_modes_no_effort():
-    rows, _ = artificialanalysis.parse(fixture(AA_PAGE))
-    sonnet = next(row for row in rows if row["source_slug"] == "claude-sonnet-5-non-reasoning")
-    assert sonnet["effort"] == "default"
+    assert aa_variant("claude-sonnet-5-non-reasoning")["effort"] == "default"
 
 
 def test_artificialanalysis_refuses_a_half_read_page():
     """A payload that lost most of its records must fail, not return a plausible subset."""
-    raw = fixture(AA_PAGE)
-    cut = raw[: len(raw) // 5] + "</body></html>"
+    raw = fixture(AA_BOARD)
+    cut = raw[: len(raw) // 5] + '"])</script></body></html>'
     with pytest.raises(ValueError):
-        artificialanalysis.parse(cut)
+        artificialanalysis.parse_board(cut)
     with pytest.raises(ValueError):
-        artificialanalysis.parse("<html><body>Intelligence Index v4.3</body></html>")
+        artificialanalysis.parse_board("<html><body>Intelligence Index v4.3</body></html>")
+    with pytest.raises(ValueError):
+        artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-opus-5-5")
 
 
 def test_copilot_prices_are_integer_micro_dollars():

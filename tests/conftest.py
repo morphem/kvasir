@@ -19,3 +19,18 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 def fixture(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8", errors="replace")
+
+
+def september_board() -> tuple[list[dict], dict]:
+    """The Artificial Analysis board as it stood in September 2026, from a saved model page.
+
+    The planner tests pin numbers on this board. Its records have the shape a variant page
+    still has, so it is read with the collector's own _row() and fold().
+    """
+    from kvasir.collectors import artificialanalysis
+
+    records = artificialanalysis._records(
+        artificialanalysis._payload(fixture("artificialanalysis-model-page.html"))
+    )
+    rows, _ = artificialanalysis.fold([artificialanalysis._row(r) for r in records.values()])
+    return rows, {"benchmark_version": "4.3", "row_count": len(rows)}

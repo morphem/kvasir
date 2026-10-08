@@ -6,7 +6,7 @@ whatever the live data says this week. Every rule is checked at every patience s
 
 from datetime import datetime, timezone
 
-from conftest import fixture
+from conftest import fixture, september_board
 from test_recommend import aa_row, sold
 
 from kvasir import budget, recommend
@@ -15,7 +15,7 @@ from kvasir.config import Settings
 
 
 def view(tiers=None):
-    aa, _ = artificialanalysis.parse(fixture("artificialanalysis-model-page.html"))
+    aa, _ = september_board()
     ai, _ = stupidlevel.parse(fixture("stupidlevel-scores.json"))
     cp, cp_meta = copilot.parse(fixture("copilot-models-and-pricing.html"))
     settings = Settings()
