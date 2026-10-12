@@ -95,11 +95,13 @@ class Settings:
     # so it never needs an entry here.
     #
     # Entries are families, not exact keys. "fable" blocks fable-5 and fable-5.1 — an exact
-    # key list let fable-5.1 into the verdict the day GitHub shipped it.
+    # key list let fable-5.1 into the verdict the day GitHub shipped it. Grok is the one
+    # exception, on purpose: since 2026-10-12 we can start Grok 4.7 but not 4.5 or 4.6, so
+    # those two are named by key, and a later Grok will reach the board unblocked.
     disabled_models: list[str] = field(
         default_factory=lambda: _csv(
             "KVASIR_DISABLED_MODELS",
-            os.environ.get("KVASIR_HIDDEN_MODELS", "grok,fable,kimi-k2.7,gpt-6-astra"),
+            os.environ.get("KVASIR_HIDDEN_MODELS", "grok-4.5,grok-4.6,fable,kimi-k2.7,gpt-6-astra"),
         )
     )
 

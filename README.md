@@ -69,7 +69,7 @@ add the container from the template — updates then arrive the normal Unraid wa
 | `KVASIR_AA_BOARD_URL` | `…/leaderboards/models` | The Artificial Analysis leaderboard: every variant in one table. Each variant's own page (`/models/<slug>`) is read once for its identity and time per task |
 | `KVASIR_INTERVAL_COPILOT` | `720` | Copilot pricing poll interval, minutes |
 | `KVASIR_STUPIDLEVEL_API_KEY` | *(empty)* | Free key from aistupidlevel.info. Falls back to `secrets.env` or `stupidlevel_api_key.key` inside the data volume, which is what survives a container rebuild. Without a key the drift scores freeze at the last good reading |
-| `KVASIR_DISABLED_MODELS` | `grok,fable,kimi-k2.7,gpt-6-astra` | Model *families* Copilot sells but we cannot use. Models absent from Copilot are excluded automatically |
+| `KVASIR_DISABLED_MODELS` | `grok-4.5,grok-4.6,fable,kimi-k2.7,gpt-6-astra` | Model *families* Copilot sells but we cannot use. Models absent from Copilot are excluded automatically |
 | `KVASIR_AUTOSTART` | `1` | `0` serves the archive and never touches the network |
 | `KVASIR_TIERS` | `Basic:13000,Heavy:100000,Power:200000` | AI-credit tiers to report on, `Name:credits` |
 | `KVASIR_DEFAULT_TIER` | `heavy` | Tier shown to a visitor who has never picked one |

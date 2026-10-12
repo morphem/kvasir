@@ -17,6 +17,20 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.6",
+        "date": "2026-10-12",
+        "title": "Grok 4.7",
+        "items": [
+            {
+                "text": "Grok 4.7 is on the board at low, high and extra high, now that our Copilot "
+                "lets us start it. Grok 4.5 and 4.6 stay switched off. It takes no role today: "
+                "GPT-6.1 Sol · Medium scores more (47.8 against 46.4 at extra high) for under a "
+                "tenth of the cost per task, in 2.6 minutes a task instead of 16.4.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+        ],
+    },
+    {
         "version": "2.5",
         "date": "2026-10-09",
         "title": "The scout: cheapest that is good enough",
