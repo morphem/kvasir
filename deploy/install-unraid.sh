@@ -2,8 +2,11 @@
 #
 # First-time install of Kvasir on the Unraid box, and the redeploy path afterwards.
 #
-#   ./deploy/install-unraid.sh            pull :latest and (re)create the container
-#   ./deploy/install-unraid.sh --template also copy the CA template + SWAG site conf
+#   ./deploy/install-unraid.sh            update the container the way the Docker tab does
+#   ./deploy/install-unraid.sh --template first copy the Unraid template + SWAG site conf
+#
+# Every setting (image, port, env) lives in unraid/my-Kvasir.xml; change it there and deploy
+# with --template.
 #
 # The container itself is stateless; everything worth keeping is the SQLite archive in
 # /mnt/user/appdata/kvasir, which is why the volume is bind-mounted rather than named.
@@ -14,17 +17,14 @@ set -euo pipefail
 # a WSL shell (NAME carries the Windows machine name), and inheriting one of those silently
 # named the container after the laptop.
 KV_SERVER="${KV_SERVER:-root@192.168.88.98}"
-KV_IMAGE="${KV_IMAGE:-ghcr.io/morphem/kvasir:latest}"
 KV_NAME="${KV_NAME:-kvasir}"
 KV_PORT="${KV_PORT:-8688}"
 KV_APPDATA="${KV_APPDATA:-/mnt/user/appdata/kvasir}"
-KV_DISABLED="${KV_DISABLED:-grok-4.5,grok-4.6,fable,kimi-k2.7,gpt-6-astra}"
 # The AI Stupid Level key is a secret: it lives in a root-only file on the server and never
-# in this repo, in the Unraid template, or in a container label. Taken from the environment
-# when given, otherwise read back from the server so a redeploy cannot silently drop it.
-# Inside the data volume on purpose: the container reads it from there when no environment
-# variable is set, so the key survives a rebuild from the Unraid template or the Docker tab,
-# neither of which knows about this script.
+# in this repo, in the Unraid template, or in a container label. When given in the
+# environment, it is written to that file; the deploy itself never passes it. Inside the data
+# volume on purpose: the container reads it from there when no environment variable is set,
+# so the key survives every rebuild, whoever does it.
 KV_SECRETS="${KV_SECRETS:-${KV_APPDATA:-/mnt/user/appdata/kvasir}/secrets.env}"
 KV_ASL_KEY="${KVASIR_STUPIDLEVEL_API_KEY:-}"
 
@@ -45,25 +45,17 @@ if [ -n "$KV_ASL_KEY" ]; then
   echo "api key stored on the server"
 fi
 
+# The container is built by Unraid itself, from the template, exactly as the Docker tab's
+# "Apply update" builds it. A plain `docker pull` + `docker run` from here left Unraid's own
+# record of the image digest stale, so the tab offered an update that was already running,
+# and two recipes for one container drifted apart (the API key went missing that way).
 ssh "$KV_SERVER" bash -s <<REMOTE
 set -euo pipefail
 mkdir -p "$KV_APPDATA"
 chown 99:100 "$KV_APPDATA"
-ASL_KEY=""
-[ -f "$KV_SECRETS" ] && . "$KV_SECRETS" && ASL_KEY="\$KVASIR_STUPIDLEVEL_API_KEY"
-docker pull "$KV_IMAGE"
-docker rm -f "$KV_NAME" 2>/dev/null || true
-docker run -d --name "$KV_NAME" \
-  --restart unless-stopped \
-  -p ${KV_PORT}:8688 \
-  -v "${KV_APPDATA}:/data" \
-  -e KVASIR_DISABLED_MODELS="$KV_DISABLED" \
-  -e KVASIR_STUPIDLEVEL_API_KEY="\$ASL_KEY" \
-  -e TZ=Europe/Warsaw \
-  -l net.unraid.docker.managed=dockerman \
-  -l net.unraid.docker.webui="http://[IP]:[PORT:8688]/" \
-  -l net.unraid.docker.icon="https://raw.githubusercontent.com/morphem/kvasir/main/assets/icon.png" \
-  "$KV_IMAGE"
+[ -f /boot/config/plugins/dockerMan/templates-user/my-Kvasir.xml ] \
+  || { echo "no Unraid template on the server: run with --template first" >&2; exit 1; }
+/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container "$KV_NAME" >/dev/null
 sleep 6
 curl -sf "http://127.0.0.1:${KV_PORT}/api/health" || { docker logs --tail 40 "$KV_NAME"; exit 1; }
 echo

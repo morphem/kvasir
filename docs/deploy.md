@@ -16,9 +16,16 @@ pull it without credentials: GitHub → Packages → `kvasir` → Package settin
 ```
 
 That copies the Community-Applications template to
-`/boot/config/plugins/dockerMan/templates-user/my-Kvasir.xml`, copies the SWAG site config, pulls
-the image and (re)creates the container on port 8688 with `/mnt/user/appdata/kvasir` mounted at
-`/data`.
+`/boot/config/plugins/dockerMan/templates-user/my-Kvasir.xml`, copies the SWAG site config, then
+runs Unraid's own `update_container kvasir` — the script behind the Docker tab's "Apply update".
+Unraid pulls the image, rebuilds the container from the template and records the digest it now
+runs. Without `--template` only that last step runs. Every setting lives in the template: change
+`unraid/my-Kvasir.xml` and deploy with `--template`. `--template` overwrites the copy on the server,
+so a value typed into the Docker tab's Edit form is lost; the API key is safe in `secrets.env`.
+
+Until 2026-10-14 the script did its own `docker pull` and `docker run`. Unraid never saw that pull,
+so its Docker tab offered an "update" that was already running, and the two recipes for one
+container drifted apart.
 
 After the first run the container is a normal Unraid app: it appears on the Docker tab with its
 icon and WebUI link, and shows "update ready" whenever the image moves. **Do not enable

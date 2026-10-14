@@ -89,11 +89,17 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   shipped it, because "fable-5" did not match it. Point releases arrive faster than lists get
   updated; match families.
 - **Secrets live in the data volume, not only in an environment variable.** `_secret()` reads
-  `KVASIR_STUPIDLEVEL_API_KEY`, then `secrets.env` / `*.key` under `/data`. The Unraid template,
-  the Docker tab's Apply button and `deploy/install-unraid.sh` each build the run command
-  differently, so a variable set by one is absent in the others: the key installed on 8 September
-  was gone by the 12th, with the file still on disk. The volume is the only thing every path
-  keeps. The file must be readable by 99:100 — the container is not root.
+  `KVASIR_STUPIDLEVEL_API_KEY`, then `secrets.env` / `*.key` under `/data`. The deploy script once
+  built its own `docker run`, unlike the Unraid template, so a variable set by one was absent in
+  the other: the key installed on 8 September was gone by the 12th, with the file still on disk.
+  The volume is the only thing every path keeps. The file must be readable by 99:100 — the
+  container is not root.
+- **Deploy goes through Unraid, never around it.** `deploy/install-unraid.sh` runs Unraid's
+  `update_container` — the same script as the Docker tab's "Apply update" — so the container is
+  always built from the template and Unraid records the digest it runs. A `docker pull` + `docker
+  run` from the shell leaves that record stale (the tab then offers an update that is already
+  running) and lets two recipes for one container drift. Settings belong in
+  `unraid/my-Kvasir.xml`, shipped with `--template`.
 - **A benchmark can re-baseline under you.** CursorBench 4.0 (2026-09-10) replaced 3.2, dropped the
   top score 19 points and re-ran a third of the models; the Intelligence Index is versioned the
   same way (v4.3 in September 2026), and switching sources on 2026-09-22 changed the unit again. `db.benchmark_versions()` keeps that
