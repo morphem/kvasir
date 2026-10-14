@@ -125,7 +125,9 @@ def test_ladder_is_a_real_frontier():
 
 def test_a_single_model_is_named_once():
     """When two roles land on the same variant, say so instead of inventing a difference."""
-    view = recommend.build([aa_row("only", "high", 60.0, 100_000)], [], sold("only"), Settings(), [])
+    view = recommend.build(
+        [aa_row("only", "high", 60.0, 100_000, minutes=1)], [], sold("only"), Settings(), []
+    )
     roles = view["plans"]["heavy"]["balanced"]["roles"]
     assert roles["worker"]["same_as"] == "architect"
     assert roles["scout"]["same_as"] == "worker"

@@ -38,8 +38,8 @@ def _task_floor(row: dict, timed: dict[str, dict[str, float]]) -> tuple[float, s
     Reasoning effort is the waiting, so raising it does not make a task shorter — an untimed
     Max takes at least as long as a timed Extra High. Without this floor the rule "unmeasured
     is not slow" put Opus 5.5 · Max, the slowest variant on the board, into a Fast worker's
-    seat the day its High crossed the ceiling. A model with no timed effort at all still
-    passes: that is absence of evidence, and it decides nothing.
+    seat the day its High crossed the ceiling. A model with no timed effort at all gets no
+    floor, and budget.quick_enough keeps it out of a loop role while a ceiling is set.
     """
     rank = EFFORT_ORDER.get(row["effort"])
     if rank is None:

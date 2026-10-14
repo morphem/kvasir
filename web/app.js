@@ -1785,8 +1785,9 @@ function renderMethod(view) {
     <div>Patience sets the longest a loop role may take over one task — Artificial Analysis's time per
       index task, reasoning included: ${escapeHtml(levels)}. You iterate with the worker and the scout,
       so one slow loop makes the whole session slow; the architect plans once and is never on this
-      clock. A variant nobody timed is not treated as slow, unless a lower effort of the same model
-      already takes longer than the limit.</div>
+      clock. A variant nobody has timed cannot take a loop role while a limit is set — nothing says it
+      keeps to it — and the card names it; at Any pace it competes. An untimed effort is held to the
+      time of a lower effort of the same model when that one was timed.</div>
     <div>The board is limited to models we can actually start: a model has to appear on GitHub's
       Copilot pricing page, and not be one this organisation has switched off
       (${escapeHtml(disabled || "none")}). A model Artificial Analysis has scored but not yet priced is

@@ -17,6 +17,27 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.7",
+        "date": "2026-10-14",
+        "title": "Gemini 4 Argon, and a patience that holds",
+        "items": [
+            {
+                "text": "Gemini 4 Argon is on the board at high effort, the only one Artificial "
+                "Analysis has run: 52.6 points for $1.99 a task, and 57.1 on Terminal-Bench. It "
+                "takes no role today: Opus 5.5 · High scores more (53.6) for less ($1.82 a task), and "
+                "Argon has not been timed yet.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+            {
+                "text": "A model nobody has timed no longer takes the worker's or the scout's seat at "
+                "Fast or Balanced patience: nothing says it keeps to the limit. The card names it "
+                "instead. At Any pace it competes as before. Untimed, Argon briefly held both the "
+                "Fast worker and the Fast scout on Heavy and Power, at 199 credits a task.",
+                "where": {"panel": "budget"},
+            },
+        ],
+    },
+    {
         "version": "2.6",
         "date": "2026-10-12",
         "title": "Grok 4.7",

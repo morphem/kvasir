@@ -64,10 +64,13 @@ SURPLUS_ROLES = ("architect", "worker")
 # everything, and the wait to the first answer, which says when a loop starts, not how long it
 # lasts. The page switches between these like it switches tiers.
 #
-# Unmeasured is not slow. A variant with no time passes — unless a lower effort of the same model
-# was timed, in which case it takes at least that long (see recommend._task_floor). A model
-# nobody has timed at all passes, for the same reason an unmeasured model cannot win a drift
-# veto: absence of evidence decides nothing.
+# A ceiling is a promise about time, so a loop role under one needs a time. A variant nobody
+# timed is held to a lower effort of the same model when one was timed (see
+# recommend._task_floor); with no time at all it cannot take the worker's or the scout's seat
+# while a ceiling is set, and the card names it. At Any pace there is no ceiling and it competes.
+# Until 2026-10-14 an untimed variant passed ("absence of evidence decides nothing"); then
+# Gemini 4 Argon · High, scored and priced but never timed, took both the Fast worker and the
+# Fast scout at 199 credits a task — a scout as dear as its worker, on a time nobody measured.
 PATIENCE = {
     "fast": {"label": "Fast", "worker": 3.0, "scout": 1.5},
     "balanced": {"label": "Balanced", "worker": 6.0, "scout": 3.0},
@@ -106,8 +109,10 @@ def loop_minutes(candidate: dict) -> float | None:
 
 
 def quick_enough(candidate: dict, ceiling: float | None) -> bool:
+    if ceiling is None:
+        return True
     minutes = loop_minutes(candidate)
-    return ceiling is None or minutes is None or minutes <= ceiling
+    return minutes is not None and minutes <= ceiling
 
 
 def frontier(candidates: list[dict]) -> list[dict]:
@@ -244,7 +249,12 @@ def _why(
         base = f"Cheapest at {bar['share']:.0%} of the leader: {bar['score']:.1f} or more. {price}."
     if upgraded_from:
         base += f" Bought up from {upgraded_from} with the tier's unused credits."
-    if speed_blocked:
+    if speed_blocked and speed_blocked["task_minutes"] is None:
+        base += (
+            f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}): not timed, so "
+            f"nothing says it stays within the {ceiling:g} min this patience allows."
+        )
+    elif speed_blocked:
         base += (
             f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}): "
             f"{speed_blocked['task_minutes']:g} min a task, over the {ceiling:g} min this "

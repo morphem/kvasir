@@ -93,8 +93,10 @@ were not re-derived — treat that as an open question, not as a tuned result.
 - **Patience** — the worker and the scout only climb a frontier rebuilt from the variants that
   finish a task inside the selected time: **Fast** 3 / 1.5 minutes, **Balanced** 6 / 3, **Any** no
   limit (worker / scout, Artificial Analysis's time per index task). These are the roles you iterate
-  with, so the length of one loop is the length of the job. A variant nobody timed passes, unless a
-  lower effort of the same model already takes longer — then it is held to that time.
+  with, so the length of one loop is the length of the job. A variant nobody timed is held to the
+  time of a timed lower effort of the same model; with no time at all it takes no loop seat while a
+  limit is set (since 2026-10-14 — before, it passed, and the untimed Gemini 4 Argon · High took the
+  Fast worker and the Fast scout at once). At Any pace it competes.
 - **Surplus** — once the economical picks are in, the plan spends the tier up to 80% on the
   architect, then the worker — never on the scout — and never past 90%. A lower role may not score more, or cost more per task, than the role
   above it, and may not land on another role's exact variant.

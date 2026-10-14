@@ -125,13 +125,30 @@ def test_a_role_you_iterate_with_never_outlasts_its_patience():
                 assert minutes <= ceilings[name], f"{name} takes {minutes} min at {plan['patience']}"
 
 
-def test_an_unmeasured_model_is_not_treated_as_slow():
-    """Absence of a measurement decides nothing — the same rule the drift veto learned."""
-    unmeasured = {"key": "mystery", "effort": "max", "score": 60.0, "cost_uusd": 1_000_000}
-    assert budget.quick_enough(unmeasured, 3)
-    assert budget.quick_enough({**unmeasured, "speed": {"task_minutes": 2}}, 3)
-    assert not budget.quick_enough({**unmeasured, "speed": {"task_minutes": 8}}, 3)
-    assert budget.quick_enough({**unmeasured, "speed": {"task_minutes": 40}}, None)
+def test_an_untimed_variant_cannot_promise_a_ceiling():
+    """A ceiling is a promise about time; only Any pace, which makes none, lets it compete."""
+    untimed = {"key": "mystery", "effort": "max", "score": 60.0, "cost_uusd": 1_000_000}
+    assert not budget.quick_enough(untimed, 3)
+    assert budget.quick_enough(untimed, None)
+    assert budget.quick_enough({**untimed, "speed": {"task_minutes": 2}}, 3)
+    assert not budget.quick_enough({**untimed, "speed": {"task_minutes": 8}}, 3)
+    assert budget.quick_enough({**untimed, "speed": {"task_minutes": 40}}, None)
+
+
+def test_an_untimed_model_takes_no_loop_seat_under_a_ceiling_and_is_named():
+    """Gemini 4 Argon · High, scored and priced but never timed, once took both the Fast
+    worker and the Fast scout. Under a ceiling it now takes neither, and the worker's card
+    says why (the scout's names only a cheaper variant it passed over)."""
+    rows = [
+        aa_row("planner", "max", 60.0, 2_000_000, minutes=10),
+        aa_row("argon", "high", 55.0, 400_000),
+        aa_row("quick", "medium", 48.0, 200_000, minutes=1),
+    ]
+    view = recommend.build(rows, [], sold("planner", "argon", "quick"), Settings(), [])
+    fast = view["plans"]["heavy"]["fast"]["roles"]
+    assert fast["worker"]["pick"]["key"] == fast["scout"]["pick"]["key"] == "quick"
+    assert "Argon · High" in fast["worker"]["why"] and "not timed" in fast["worker"]["why"]
+    assert view["plans"]["basic"]["any"]["roles"]["worker"]["pick"]["key"] == "argon"
 
 
 def test_no_plan_ever_passes_the_safety_cap():

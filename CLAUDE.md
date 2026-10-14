@@ -111,10 +111,13 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   (`budget.PATIENCE`: Fast 3/1.5 min, Balanced 6/3, Any) cannot hold one; the architect is exempt,
   because a plan is made once and deliberately. It replaced first an 80 tok/s floor, which barred
   whole models once the source timed everything, then the wait to the first answer, which says
-  when a loop starts rather than how long it lasts. A variant nobody timed passes — absence of
-  evidence decides nothing — *unless a lower effort of the same model was timed*: then it takes at
-  least that long (`recommend._task_floor`). Without that floor Opus 5.5 · Max, the slowest variant
-  on the board, took a Fast worker's seat as "unmeasured". The loop roles climb a frontier
+  when a loop starts rather than how long it lasts. A ceiling is a promise about time, so under
+  one a loop role needs a time: an untimed variant is held to a timed lower effort of the same
+  model (`recommend._task_floor`) — without that floor Opus 5.5 · Max, the slowest variant on the
+  board, took a Fast worker's seat as "unmeasured" — and with no time at all it takes no loop seat,
+  and the card names it. At Any pace it competes. Until 2026-10-14 untimed passed ("absence of
+  evidence decides nothing"); then Gemini 4 Argon · High, never timed, took both the Fast worker
+  and the Fast scout at 199 credits a task. Owner's call to reverse it. The loop roles climb a frontier
   *rebuilt* from the quick variants, not the full frontier filtered — a slow rung can hide the
   quick variant it dominated. The opening picks keep the stack's shape too: a scout never opens
   dearer than its worker.
