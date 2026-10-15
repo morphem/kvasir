@@ -1070,6 +1070,8 @@ function renderMap(view) {
     if (slot.pick) picks[candidateId(slot.pick)] = role;
   });
   const onFront = new Set(front.map((p) => p.id));
+  const efforts = {};
+  view.candidates.forEach((c) => (efforts[c.key] = (efforts[c.key] || 0) + 1));
   const colour = { architect: "var(--violet)", worker: "var(--cyan)", scout: "var(--dim)" };
 
   // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
@@ -1125,7 +1127,9 @@ function renderMap(view) {
       const t = labelFor(p, p.c.label, true);
       if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label pick" style="fill:${colour[role]}">${escapeHtml(p.c.label)}</text>`;
     } else if (!p.ghost && (onFront.has(p.id) || hue)) {
-      const text = hue ? p.c.effort_label : p.c.label;
+      // A chip's dots read by effort alone, the chip giving the model — except a model with one
+      // effort, whose lone "High" beside another model's line read as that model's.
+      const text = hue && efforts[p.c.key] > 1 ? p.c.effort_label : p.c.label;
       const t = labelFor(p, text, false);
       if (t) label = `<text x="${t.dx}" y="${t.dy}" text-anchor="${t.anchor}" class="pt-label" ${hue ? `style="fill:${hue}"` : ""}>${escapeHtml(text)}</text>`;
     }
