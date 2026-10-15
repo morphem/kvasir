@@ -174,8 +174,10 @@ function familyName(candidates) {
   return candidates[0].label.split(" · ")[0];
 }
 
-/* Families worth a line: two or more efforts. The line runs low to max, so on every chart
-   it reads as the same thing — what turning the effort dial up buys, and what it costs.
+/* Every current model, as a chip that colours its dots. With two or more efforts it also draws
+   a line, low to max, so on every chart it reads as the same thing — what turning the effort
+   dial up buys, and what it costs. A model the source ran at one effort only (Gemini 4 Argon)
+   still gets its chip: leaving it out made it impossible to find on the chart.
    Alphabetical, so the list never reshuffles when scores move. */
 function families(view) {
   const groups = new Map();
@@ -186,7 +188,6 @@ function families(view) {
     groups.get(c.key).push(c);
   });
   return [...groups.values()]
-    .filter((members) => members.length >= 2)
     .map((members) => ({
       key: members[0].key,
       name: familyName(members),

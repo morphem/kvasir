@@ -17,6 +17,19 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.8",
+        "date": "2026-10-15",
+        "title": "Every model has a chip on the map",
+        "items": [
+            {
+                "text": "The chips above the map now list every model, not only those run at two or "
+                "more efforts. Gemini 4 Argon and GPT-5.3 Codex, each run at a single effort, can now "
+                "be picked and coloured like the rest. A single effort draws a dot, not a line.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+        ],
+    },
+    {
         "version": "2.7",
         "date": "2026-10-14",
         "title": "Gemini 4 Argon, and a patience that holds",
