@@ -47,6 +47,14 @@ def test_artificialanalysis_reads_the_whole_leaderboard():
     assert not any(entry.get("intelligenceIndexIsEstimated") for entry in priced)
 
 
+def test_artificialanalysis_reads_the_current_initial_models_prop():
+    """The live page moved the same complete table into its client component props."""
+    raw = fixture(AA_BOARD).replace('{\\"models\\":[', '{\\"initialModels\\":[')
+    board = artificialanalysis.parse_board(raw)
+    assert len(board) == 697
+    assert sum(e.get("intelligenceIndexCostPerTask") is not None for e in board) == 185
+
+
 def test_artificialanalysis_reads_a_variant_page():
     row, version = artificialanalysis.parse_variant(fixture(AA_VARIANT), "claude-haiku-5-5-low")
     assert version == "4.3"

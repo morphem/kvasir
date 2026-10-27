@@ -57,8 +57,10 @@ _CHUNK = re.compile(r'self\.__next_f\.push\(\[1,"(.*?)"\]\)</script>', re.S)
 # all lowercase kebab: "qwen3-0.6b-instruct", "QwQ-32B-Preview".
 _RECORD = re.compile(r'\{"id":"[0-9a-f-]{36}","slug":"[A-Za-z0-9.-]+"')
 _VERSION = re.compile(r"Intelligence Index v(\d+(?:\.\d+)?)")
-# The leaderboard table opens with this key; nothing else on the page does.
-_BOARD = '{"models":['
+# The leaderboard table used to be a top-level ``models`` value. Since 17 October 2026 it
+# is passed to the client component as ``initialModels``. Keep both shapes readable: saved
+# fixtures and old pages use the first one, while the live page uses the second.
+_BOARD_KEYS = ('"initialModels":[', '"models":[')
 # "Claude Opus 5.5 (Adaptive Reasoning, Max Effort, Default)" -> "Claude Opus 5.5"
 _QUALIFIER = re.compile(r"\s*\(.*\)\s*$")
 
@@ -167,18 +169,24 @@ def _measured(entry: dict) -> dict:
 def parse_board(raw: str) -> list[dict]:
     """Every variant on the leaderboard, as the raw entries of its table."""
     stream = _payload(raw)
-    start = stream.find(_BOARD)
     board: list[dict] = []
-    if start >= 0:
+    for marker in _BOARD_KEYS:
+        start = stream.find(marker)
+        if start < 0:
+            continue
         try:
-            table, _ = json.JSONDecoder().raw_decode(stream, start)
+            # Decode from the opening bracket rather than the surrounding RSC props. Their
+            # component tree may move again; the table itself is the contract we validate.
+            table, _ = json.JSONDecoder().raw_decode(stream, start + len(marker) - 1)
             board = [
                 entry
-                for entry in table["models"]
+                for entry in table
                 if isinstance(entry, dict) and entry.get("slug") and "intelligenceIndex" in entry
             ]
-        except (json.JSONDecodeError, KeyError, TypeError):
+        except (json.JSONDecodeError, TypeError):
             board = []
+        if board:
+            break
     priced = sum(1 for entry in board if _num(entry.get("intelligenceIndexCostPerTask")) is not None)
     if len(board) < MIN_ROWS or priced < MIN_PRICED:
         raise ValueError(

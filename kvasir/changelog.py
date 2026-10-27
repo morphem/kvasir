@@ -17,6 +17,25 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.9",
+        "date": "2026-10-27",
+        "title": "GPT-6.1 Terra",
+        "items": [
+            {
+                "text": "GPT-6.1 Terra is on the board at all five efforts, low to max. Copilot "
+                "sells it, and Artificial Analysis has scored, priced and timed it. At max it "
+                "scores 48.1 for $0.40 and 6.4 minutes a task; medium scores 41.3 for $0.10 in "
+                "1.1 minutes.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+            {
+                "text": "Artificial Analysis moved its leaderboard data on 17 October. Kvasir "
+                "kept the last complete reading instead of showing a partial board; current "
+                "releases and re-runs are flowing again.",
+            },
+        ],
+    },
+    {
         "version": "2.8",
         "date": "2026-10-15",
         "title": "Every model has a chip on the map",
