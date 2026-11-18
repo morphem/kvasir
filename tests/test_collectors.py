@@ -262,3 +262,17 @@ def test_stupidlevel_uses_the_v1_endpoint_when_a_key_is_set(monkeypatch):
     assert calls["url"] == stupidlevel.URL_V1
     assert calls["headers"]["Authorization"] == "Bearer asl_live_test"
     assert rows
+
+
+def test_a_model_we_can_buy_is_read_from_its_page_when_the_table_drops_it():
+    """Since 14 November 2026 the table lists only current releases; Gemini 3.8 Flash fell off
+    it while Copilot still sold it. Its archived page is read instead — shortest slug."""
+    archived = [
+        {"model_key": "gemini-3.8-flash", "source_slug": "gemini-3-8-flash-low"},
+        {"model_key": "gemini-3.8-flash", "source_slug": "gemini-3-8-flash"},
+        {"model_key": "old-thing", "source_slug": "old-thing"},
+        {"model_key": "opus-5.5", "source_slug": "claude-opus-5-5"},
+    ]
+    rows = [{"model_key": "opus-5.5"}]
+    sold = {"gemini-3.8-flash", "opus-5.5", "never-scored"}
+    assert artificialanalysis.off_board(rows, sold, archived) == {"gemini-3.8-flash": "gemini-3-8-flash"}

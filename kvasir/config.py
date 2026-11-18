@@ -101,7 +101,7 @@ class Settings:
     disabled_models: list[str] = field(
         default_factory=lambda: _csv(
             "KVASIR_DISABLED_MODELS",
-            os.environ.get("KVASIR_HIDDEN_MODELS", "grok-4.5,grok-4.6,fable,kimi-k2.7,gpt-6-astra"),
+            os.environ.get("KVASIR_HIDDEN_MODELS", "grok-4.5,grok-4.6,fable,kimi-k2.7,gpt-6-astra,gpt-6.2-astra"),
         )
     )
 

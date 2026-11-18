@@ -53,7 +53,12 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   page only for a slug the archive does not know, or for a priced variant whose score or cost
   moved (`needs_page`). Identity comes from the page — `release.name` for the model,
   `effort.slug` for the effort — never from the display name: deriving it from the name got 79 of
-  665 wrong. A non-reasoning mode gets no effort and never reaches the board. The stream is their
+  665 wrong. Since 2026-11-14 the table entries carry no slug, only `id` and `release`; an
+  entry is matched by `id` to the archive, or else to its release page (`/models/<release>`,
+  which every variant URL now redirects to). The table lists only current releases, so a model
+  Copilot sells that the table dropped is read from its archived page (`off_board`) — otherwise
+  Gemini 3.8 Flash fell off the board the day the site tidied its table. A non-reasoning mode
+  gets no effort and never reaches the board. The stream is their
   implementation detail, not an API — hence `MIN_ROWS`/`MIN_PRICED`. Their free API has no cost or
   time per task, and their `/data/*.txt` chart file is encrypted: leave both alone.
 - **A release is timed before it is priced.** GPT-6 Luna and Sol arrived scored and timed but with

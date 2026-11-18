@@ -17,6 +17,38 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.10",
+        "date": "2026-11-18",
+        "title": "GPT-6.2 Sol, Gemini 4 Carbon and Hydrogen",
+        "items": [
+            {
+                "text": "GPT-6.2 Sol is on the board at all five efforts. It is the new value "
+                "leader: 55.7 points at extra high for $0.65 and 4.9 minutes a task, 57.3 at max for "
+                "$1.01. It is the worker at Fast and Balanced patience in every tier. GPT-6.2 Astra is sold by Copilot "
+                "but switched off for us.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+            {
+                "text": "Gemini 4 Carbon (low to high) and Gemini 4 Hydrogen (low to extra high) "
+                "are on the board, and Gemini 4 Argon now has medium beside high. Carbon · High "
+                "scores 60.0, the top of the board, and becomes the architect at Heavy and Power: "
+                "$5.48 a task against $10.04 for Opus 5.5 · Max, but 34 minutes a task.",
+                "where": {"panel": "map", "map": "cost"},
+            },
+            {
+                "text": "From 14 to 18 November the Artificial Analysis chip was amber: the site "
+                "changed its leaderboard again, and Kvasir kept the last complete reading. The "
+                "leaderboard now lists only current releases, so models we can still start that it "
+                "dropped — Gemini 3.8 Flash, GPT-6.1 Sol — are read from their own pages and stay.",
+            },
+            {
+                "text": "Every score is Intelligence Index v5.0, which replaced v4.3 on 28 October. "
+                "The new version re-scored every model, so no score here mixes the two; do not "
+                "compare them with readings from before that date.",
+            },
+        ],
+    },
+    {
         "version": "2.9",
         "date": "2026-10-27",
         "title": "GPT-6.1 Terra",

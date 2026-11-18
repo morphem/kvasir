@@ -32,6 +32,18 @@ keep the identity and the clock they were archived with, by slug. Variants that 
 A fresh database reads every page once (~700); after that a run reads a handful. The leaderboard
 and page numbers were checked to be equal when this split was made.
 
+**Since 2026-11-14** the leaderboard entries carry no slug: only the record `id` and the
+release (`release.slug`, `release.name`). The table also shrank to the ~280 current variants, and
+gained the time per task. A variant URL now redirects to its release's page, which holds the full
+record of every variant of that release. So an entry is identified by `id`: from the archive
+(rows keep `source_id`) when known, otherwise from its release page, read once for all its
+variants. A fresh archive reads ~200 release pages once; after that a run reads a handful.
+
+A model Copilot sells that the table dropped (Gemini 3.8 Flash, GPT-6.1 Sol, GPT-6 Astra on
+2026-11-18) is still scored on its own page, so the run reads that page too (`off_board`, by the
+shortest archived slug). A 404 there means the site retired it: the model then joins the ones
+nobody scores, as any unbenchmarked model does.
+
 Three things that are *not* the data, and why the collector does not use them:
 
 - The **schema.org `Dataset` blocks** (JSON-LD) carry only the top twenty of each chart. The old

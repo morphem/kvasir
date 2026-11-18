@@ -23,6 +23,17 @@ for it: a slug never seen before, or a priced variant whose score or cost moved 
 mean a new time. Everything else keeps the identity and the clock it was archived with. A
 fresh database reads every page once; after that a run reads a handful.
 
+Since 14 November 2026 the leaderboard entries carry no slug, only the record `id` and the
+release (`release.slug`), and a variant URL redirects to its release's page, which holds the
+full record of every variant of that release. So an entry is identified by its `id`: from
+the archive when the variant is known, otherwise from its release page, read once for all
+its variants. The entry also carries the time per task now, the clock patience runs on.
+
+The same day the table shrank from ~700 variants to the ~280 current ones: a release the
+site no longer lists, like Gemini 3.8 Flash, is still scored on its own page. A model that
+Copilot sells and the table dropped is read from that page (`off_board`), so what we can
+start does not fall off the board because the site tidied its table.
+
 Both payloads are an implementation detail of their site, not an API (their free API has no
 cost or time per task), so the parser refuses to return a half-read table: fewer records than
 MIN_ROWS, or fewer priced ones than MIN_PRICED, means the page changed shape and the last good
@@ -109,6 +120,10 @@ def _round(value: float | None, places: int = 1) -> float | None:
     return None if value is None else round(value, places)
 
 
+def _by_id(stream: str) -> dict[str, dict]:
+    return {record["id"]: record for record in _records(stream).values()}
+
+
 def _row(record: dict) -> dict:
     name = (record.get("release") or {}).get("name") or _QUALIFIER.sub("", record["name"])
     key = model_key(name)
@@ -126,6 +141,7 @@ def _row(record: dict) -> dict:
         "vendor": vendor_of(key),
         "source_name": record["name"],
         "source_slug": record["slug"],
+        "source_id": record.get("id"),
         "score": _round(_num(record.get("intelligenceIndex"))),
         "cost_uusd": usd_to_uusd(cost),
         "output_tokens": round(tokens) if tokens is not None else None,
@@ -151,19 +167,35 @@ def _measured(entry: dict) -> dict:
     Checked against the variant pages when the leaderboard became the source: the same
     figures to the last rounded digit.
     """
+    # Two spellings of the same figures: until 14 November 2026 (and in the saved fixture) the
+    # table used the "median…" names and a flat terminalBench40; since then outputSpeed,
+    # timeToFirstAnswerToken and a "scores" map. Neither carries the other's.
     cost = _num(entry.get("intelligenceIndexCostPerTask"))
     terminal = _num(entry.get("terminalBench40"))
-    return {
+    if terminal is None:
+        terminal = _num((entry.get("scores") or {}).get("terminalbench-4-0"))
+    measured = {
         "source_name": entry["name"],
         "score": _round(_num(entry.get("intelligenceIndex"))),
         "cost_uusd": usd_to_uusd(cost),
         "terminal_bench": _round(terminal * 100) if terminal is not None else None,
-        "tokens_per_second": _round(_num(entry.get("medianOutputTokensPerSecond"))),
-        "first_answer_seconds": _round(_num(entry.get("medianTimeToFirstAnswerTokenSeconds")) or None),
+        "tokens_per_second": _round(
+            _num(entry.get("medianOutputTokensPerSecond")) or _num(entry.get("outputSpeed"))
+        ),
+        "first_answer_seconds": _round(
+            _num(entry.get("medianTimeToFirstAnswerTokenSeconds"))
+            or _num(entry.get("timeToFirstAnswerToken"))
+            or None
+        ),
         "thinking_seconds": _round(_num(entry.get("medianReasoningTimeSeconds")) or None),
         "end_to_end_seconds": _round(_num(entry.get("medianEndToEndResponseTimeSeconds")) or None),
         "deprecated": bool(entry.get("deprecated")),
     }
+    # Only when the table has it: an older table without it must not erase the page's clock.
+    task_seconds = _num(entry.get("intelligenceIndexTimePerTask"))
+    if task_seconds:
+        measured["task_seconds"] = _round(task_seconds)
+    return measured
 
 
 def parse_board(raw: str) -> list[dict]:
@@ -181,7 +213,9 @@ def parse_board(raw: str) -> list[dict]:
             board = [
                 entry
                 for entry in table
-                if isinstance(entry, dict) and entry.get("slug") and "intelligenceIndex" in entry
+                if isinstance(entry, dict)
+                and (entry.get("slug") or entry.get("id"))
+                and "intelligenceIndex" in entry
             ]
         except (json.JSONDecodeError, TypeError):
             board = []
@@ -202,6 +236,31 @@ def parse_variant(raw: str, slug: str) -> tuple[dict, str]:
         raise ValueError(f"artificialanalysis: no record for {slug} on its own page")
     version = _VERSION.search(raw)
     return _row(record), version.group(1) if version else ""
+
+
+def parse_release(raw: str) -> tuple[dict[str, dict], str]:
+    """Every variant record on a release's page, by record id, and the index version it names."""
+    version = _VERSION.search(raw)
+    rows = {
+        record_id: _row(record) for record_id, record in _by_id(_payload(raw)).items()
+    }
+    return rows, version.group(1) if version else ""
+
+
+def off_board(rows: list[dict], sold: set[str], archived: list[dict]) -> dict[str, str]:
+    """Models we can buy that the table dropped, and the page each was last read from.
+
+    By the archived slugs: the shortest is the release's own page, and any variant URL
+    redirects there anyway. A model never archived has no page we know of.
+    """
+    on_board = {row["model_key"] for row in rows}
+    pages: dict[str, str] = {}
+    for row in archived:
+        key, slug = row["model_key"], row.get("source_slug")
+        if key in sold and key not in on_board and slug:
+            if key not in pages or len(slug) < len(pages[key]):
+                pages[key] = slug
+    return pages
 
 
 def needs_page(entry: dict, known: dict | None, folded: bool = False) -> bool:
@@ -271,7 +330,10 @@ def merge(
         "row_count": len(rows),
         "priced_count": priced,
         "folded": {
-            slug: {key: row[key] for key in ("model_key", "effort", "vendor", "released")}
+            slug: {
+                key: row.get(key)
+                for key in ("model_key", "effort", "vendor", "released", "source_id")
+            }
             for slug, row in sorted(losers.items())
         },
     }
@@ -289,10 +351,23 @@ async def fetch(client) -> tuple[list[dict], dict]:
     known = {row["source_slug"]: row for row in archived if row.get("source_slug")}
     folded = meta.get("folded") or {}
     version = meta.get("benchmark_version") or ""
+    # The archive's variants and fold losers by record id, for entries that carry no slug.
+    slug_of = {row["source_id"]: row["source_slug"] for row in archived if row.get("source_id")}
+    slug_of.update({info["source_id"]: slug for slug, info in folded.items() if info.get("source_id")})
+
     pages: dict[str, dict] = {}
+    releases: dict[str, list[dict]] = {}
     for entry in board:
+        if not entry.get("slug") and entry.get("id") in slug_of:
+            entry["slug"] = slug_of[entry["id"]]
+        if not entry.get("slug"):
+            releases.setdefault((entry.get("release") or {}).get("slug") or "", []).append(entry)
+            continue
         slug = entry["slug"]
         if not needs_page(entry, known.get(slug), slug in folded):
+            continue
+        if entry.get("release"):
+            releases.setdefault(entry["release"].get("slug") or "", []).append(entry)
             continue
         page = await client.get(f"{SITE_URL}/{slug}", follow_redirects=True)
         page.raise_for_status()
@@ -300,4 +375,44 @@ async def fetch(client) -> tuple[list[dict], dict]:
         # A new index version re-scores every variant, so the pages carry it in.
         version = page_version or version
         await asyncio.sleep(PAGE_PAUSE_S)
-    return merge(board, known, folded, pages, version)
+
+    for release, entries in releases.items():
+        if not release:
+            raise ValueError(f"artificialanalysis: {entries[0]['name']} has no slug and no release")
+        page = await client.get(f"{SITE_URL}/{release}", follow_redirects=True)
+        page.raise_for_status()
+        rows, page_version = parse_release(page.text)
+        version = page_version or version
+        for entry in entries:
+            row = rows.get(entry.get("id"))
+            if row is None:
+                raise ValueError(
+                    f"artificialanalysis: no record for {entry['name']} on the {release} page"
+                )
+            entry["slug"] = row["source_slug"]
+            pages[entry["slug"]] = row
+        await asyncio.sleep(PAGE_PAUSE_S)
+    rows, meta = merge(board, known, folded, pages, version)
+
+    sold = {row["model_key"] for row in db.latest(settings.db_path, "copilot")[0]}
+    extra: list[dict] = []
+    for key, slug in sorted(off_board(rows, sold, archived).items()):
+        page = await client.get(f"{SITE_URL}/{slug}", follow_redirects=True)
+        if page.status_code == 404:
+            continue  # the site retired it: it joins the models nobody scores
+        page.raise_for_status()
+        found, _ = parse_release(page.text)
+        extra.extend(row for row in found.values() if row["model_key"] == key)
+        await asyncio.sleep(PAGE_PAUSE_S)
+    if extra:
+        rows, losers = fold(rows + extra)
+        meta["row_count"] = len(rows)
+        meta["priced_count"] = sum(1 for row in rows if row["cost_uusd"] is not None)
+        meta["off_board"] = sorted({row["model_key"] for row in extra})
+        meta["folded"].update(
+            {
+                slug: {key: row.get(key) for key in ("model_key", "effort", "vendor", "released", "source_id")}
+                for slug, row in losers.items()
+            }
+        )
+    return rows, meta
