@@ -221,7 +221,15 @@ section { margin-top: 3.4rem; }
 
 /* ---- tables ---- */
 .table-scroll { overflow-x: auto; margin-top: 1.2rem; border: 1px solid var(--edge); border-radius: 14px; }
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.table-scroll:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+/* On a phone a wide table scrolls inside its own box: the header row and the first column
+   (the model, the task, the role) stay put, so a number never loses what it belongs to. */
+@media (max-width: 700px) {
+  .table-scroll { max-block-size: 75vh; overflow: auto; }
+  td:first-child { position: sticky; left: 0; z-index: 1; background: var(--ink); }
+  th:first-child { left: 0; z-index: 2; }
+}
+table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.9rem; }
 th {
   font-family: var(--mono); font-size: 0.63rem; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--dim); text-align: left; padding: 0.75rem 0.85rem; background: var(--raise);
@@ -451,13 +459,21 @@ footer a:hover { color: var(--text); }
 .tier-tab b { display: block; font-size: 0.74rem; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; }
 .tier-tab span { font-size: 0.68rem; letter-spacing: 0.06em; opacity: 0.75; }
 .tier-tab:hover { border-color: var(--dim); color: var(--text); }
-.tier-tab[aria-selected="true"] {
+.tier-tab:has(:checked) {
   color: var(--cyan);
   background: color-mix(in srgb, var(--cyan) 13%, transparent);
   border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
 }
-.tier-tab[aria-selected="true"] b { color: var(--cyan); }
-.tier-tab[aria-selected="true"] span { color: var(--text); opacity: 0.8; }
+.tier-tab:has(:checked) b { color: var(--cyan); }
+.tier-tab:has(:checked) span { color: var(--text); opacity: 0.8; }
+/* The switches are radio groups dressed as buttons: the label is the button, the radio is
+   kept for the keyboard and the screen reader, and only hidden from the eye. */
+.tier-tab, .map-tab { display: inline-block; position: relative; }
+.tier-tab input, .map-tab input {
+  position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+.tier-tab:has(:focus-visible), .map-tab:has(:focus-visible) { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
 /* ---- monthly budget ---- */
 .budget-bar {
@@ -578,8 +594,14 @@ footer a:hover { color: var(--text); }
   letter-spacing: 0.1em;
 }
 [data-panel] { margin-top: 0; }
+/* A panel hidden "until found" keeps its box, so it must not keep its margin either. */
+[data-panel][hidden] { margin: 0; }
 
 @media (max-width: 700px) {
+  /* One row that scrolls sideways, never four rows wrapped: the strip is sticky, and wrapped it
+     covered a third of a phone's screen. The cut-off tab at the edge says there is more. */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: inline proximity; }
+  .tab { flex: none; scroll-snap-align: start; }
   .topbar { padding-top: 1.2rem; }
   .topbar-right { text-align: left; }
   .topbar-right .tier-tabs { justify-content: flex-start; }
@@ -676,8 +698,7 @@ section[data-panel="value"] ~ section[data-panel="value"] { margin-top: 3rem; }
   border: 1px solid var(--edge); border-radius: 10px; padding: 0.5rem 0.95rem;
 }
 .map-tab:hover { color: var(--text); border-color: var(--dim); }
-.map-tab:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-.map-tab[aria-selected="true"] {
+.map-tab:has(:checked) {
   color: var(--text); background: color-mix(in srgb, var(--cyan) 10%, transparent); border-color: color-mix(in srgb, var(--cyan) 50%, transparent);
 }
 .map-key { display: flex; flex-wrap: wrap; gap: 0.5rem 1.1rem; margin-bottom: 0.8rem; font-size: 0.8rem; color: var(--dim); }

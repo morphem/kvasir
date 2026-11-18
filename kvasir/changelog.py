@@ -17,6 +17,28 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.11",
+        "date": "2026-11-19",
+        "title": "Easier on a phone and from the keyboard",
+        "items": [
+            {
+                "text": "On a phone the section tabs are one row you swipe, instead of four rows that "
+                "covered a third of the screen. Wide tables keep their header row and the first "
+                "column (the model, the task) in place while you scroll them.",
+                "where": {"panel": "models"},
+            },
+            {
+                "text": "Find in page (Ctrl+F) now reaches every tab: search for a model name and "
+                "the tab it is on opens. Supported in Chrome, Edge and Firefox.",
+            },
+            {
+                "text": "The tabs and the tier, patience and chart switches work from the keyboard: "
+                "Tab to reach them, the arrow keys to move. Screen readers now hear the switches as "
+                "one choice among several, which is what they are.",
+            },
+        ],
+    },
+    {
         "version": "2.10",
         "date": "2026-11-18",
         "title": "GPT-6.2 Sol, Gemini 4 Carbon and Hydrogen",

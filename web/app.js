@@ -101,11 +101,20 @@ function showPanel(id, { scroll = false } = {}) {
 
   // Scoped to sections on purpose: the tab buttons carry the same attribute, and an
   // unscoped query hid six of the seven switches it had just drawn.
+  // "until-found" keeps a hidden panel searchable: find-in-page for a model name opens the tab
+  // it is on (beforematch, below). Where it is unsupported it is plain hidden.
   document.querySelectorAll("section[data-panel]").forEach((section) => {
-    section.hidden = section.dataset.panel !== known;
+    section.hidden = section.dataset.panel === known ? false : "until-found";
   });
   document.querySelectorAll("#section-tabs .tab").forEach((tab) => {
-    tab.setAttribute("aria-selected", String(tab.dataset.panel === known));
+    const selected = tab.dataset.panel === known;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    // On a phone the strip scrolls sideways: bring the open tab into it, without moving the page.
+    const strip = tab.parentElement;
+    if (selected && strip.scrollWidth > strip.clientWidth) {
+      strip.scrollTo({ left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2 });
+    }
   });
 
   // Only pull the page up when the tab strip has scrolled out of sight — switching while
@@ -122,12 +131,27 @@ function renderTabs() {
   box.dataset.ready = "1";
   PANELS.forEach((panel) => {
     const tab = tag(
-      `<button class="tab" role="tab" data-panel="${panel.id}" aria-selected="false">${escapeHtml(
-        panel.label
-      )}</button>`
+      `<button type="button" class="tab" role="tab" id="tab-${panel.id}" data-panel="${panel.id}"
+        aria-selected="false" tabindex="-1">${escapeHtml(panel.label)}</button>`
     );
     tab.addEventListener("click", () => showPanel(panel.id, { scroll: true }));
     box.append(tab);
+  });
+  document.querySelectorAll("section[data-panel]").forEach((section) => {
+    section.setAttribute("role", "tabpanel");
+    section.setAttribute("aria-labelledby", `tab-${section.dataset.panel}`);
+    section.addEventListener("beforematch", () => showPanel(section.dataset.panel));
+  });
+  // One tab stop for the strip; the arrows move between tabs and Enter or Space opens one.
+  // Opening is not on focus because a panel swap moves the page and rewrites the address.
+  box.addEventListener("keydown", (event) => {
+    const tabs = [...box.querySelectorAll(".tab")];
+    const at = tabs.indexOf(document.activeElement);
+    if (at < 0) return;
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key];
+    if (to === undefined) return;
+    event.preventDefault();
+    tabs[(to + tabs.length) % tabs.length].focus();
   });
 }
 
@@ -312,25 +336,43 @@ function renderFreshness(sources) {
   });
 }
 
+/* ---------- one-of-several switches ----------
+   Tier, patience and chart each pick one option from a few, which is what a radio group is —
+   not tabs: there is no panel per option. Native radios give the arrow keys, the single tab
+   stop and the screen-reader announcement for free; the label carries the look the buttons
+   had. A switch re-renders the page, so focus is put back on the checked option. */
+function radioGroup(box, name, options, pick) {
+  const hadFocus = box.contains(document.activeElement);
+  box.innerHTML = "";
+  options.forEach((option) => {
+    const label = tag(`<label class="${option.cls}">
+      <input type="radio" name="${name}" value="${escapeHtml(option.value)}" ${option.checked ? "checked" : ""}>
+      ${option.html}
+    </label>`);
+    label.querySelector("input").addEventListener("change", () => pick(option.value));
+    box.append(label);
+  });
+  if (hadFocus) {
+    const checked = box.querySelector("input:checked");
+    if (checked) checked.focus({ preventScroll: true });
+  }
+}
+
 /* ---------- tier switch ---------- */
 
 function renderTierTabs(view) {
-  const tabs = $("#tier-tabs");
-  tabs.innerHTML = "";
-  (view.budget_tiers || []).forEach((tier) => {
-    const tierPlan = plan(tier.id) || {};
-    const active = tier.id === state.tier;
-    const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
-      <b>${escapeHtml(tier.name)}</b>
-      <span>${Math.round(tier.credits / 1000)}K credits · $${num(tierPlan.usd)}</span>
-    </button>`);
-    button.addEventListener("click", () => {
-      if (state.tier === tier.id) return;
-      state.tier = tier.id;
-      store(TIER_STORAGE_KEY, tier.id);
-      rerender();
-    });
-    tabs.append(button);
+  const options = (view.budget_tiers || []).map((tier) => ({
+    cls: "tier-tab",
+    value: tier.id,
+    checked: tier.id === state.tier,
+    html: `<b>${escapeHtml(tier.name)}</b>
+      <span>${Math.round(tier.credits / 1000)}K credits · $${num((plan(tier.id) || {}).usd)}</span>`,
+  }));
+  radioGroup($("#tier-tabs"), "tier", options, (id) => {
+    if (state.tier === id) return;
+    state.tier = id;
+    store(TIER_STORAGE_KEY, id);
+    rerender();
   });
 
   const current = plan();
@@ -346,27 +388,24 @@ function renderTierTabs(view) {
 const ceilingText = (minutes) => (minutes === null || minutes === undefined ? "any" : `${minutes} min`);
 
 function renderPatienceTabs(view) {
-  const tabs = $("#patience-tabs");
-  if (!tabs) return;
-  tabs.innerHTML = "";
-  (view.patience || []).forEach((level) => {
-    const active = level.id === state.patience;
-    const detail =
-      level.scout === null && level.worker === null
-        ? "no limit on waiting"
-        : `scout ${ceilingText(level.scout)} · worker ${ceilingText(level.worker)}`;
-    // a task, per loop
-    const button = tag(`<button class="tier-tab" role="tab" aria-selected="${active}">
-      <b>${escapeHtml(level.label)}</b>
-      <span>${escapeHtml(detail)}</span>
-    </button>`);
-    button.addEventListener("click", () => {
-      if (state.patience === level.id) return;
-      state.patience = level.id;
-      store(PATIENCE_STORAGE_KEY, level.id);
-      rerender();
-    });
-    tabs.append(button);
+  const box = $("#patience-tabs");
+  if (!box) return;
+  const options = (view.patience || []).map((level) => ({
+    cls: "tier-tab",
+    value: level.id,
+    checked: level.id === state.patience,
+    html: `<b>${escapeHtml(level.label)}</b>
+      <span>${escapeHtml(
+        level.scout === null && level.worker === null
+          ? "no limit on waiting"
+          : `scout ${ceilingText(level.scout)} · worker ${ceilingText(level.worker)}`
+      )}</span>`,
+  }));
+  radioGroup(box, "patience", options, (id) => {
+    if (state.patience === id) return;
+    state.patience = id;
+    store(PATIENCE_STORAGE_KEY, id);
+    rerender();
   });
 }
 
@@ -912,20 +951,18 @@ const MAPS = {
 function renderMapTabs() {
   const box = $("#map-tabs");
   if (!box) return;
-  box.innerHTML = Object.entries(MAPS)
-    .map(
-      ([id, map]) =>
-        `<button class="map-tab" role="tab" data-map="${id}" aria-selected="${state.map === id}">${escapeHtml(map.tab)}</button>`
-    )
-    .join("");
-  box.querySelectorAll(".map-tab").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.map = button.dataset.map;
-      store("kvasir.map", state.map);
-      hideTip();
-      renderMapTabs();
-      renderMap(state.view);
-    });
+  const options = Object.entries(MAPS).map(([id, map]) => ({
+    cls: "map-tab",
+    value: id,
+    checked: state.map === id,
+    html: escapeHtml(map.tab),
+  }));
+  radioGroup(box, "map", options, (id) => {
+    state.map = id;
+    store("kvasir.map", state.map);
+    hideTip();
+    renderMapTabs();
+    renderMap(state.view);
   });
 }
 
@@ -1948,6 +1985,9 @@ function paintTheme() {
   button.setAttribute("aria-label", theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
   button.title = button.getAttribute("aria-label");
   $('meta[name="theme-color"]').content = theme === "dark" ? "#0b0e14" : "#fbfbfd";
+  // Native UI (scrollbars, form controls) follows this hint too, not only the stylesheet.
+  const chosen = stored(THEME_KEY);
+  $('meta[name="color-scheme"]').content = chosen === "light" || chosen === "dark" ? chosen : "dark light";
 }
 
 $("#theme").addEventListener("click", () => {

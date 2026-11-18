@@ -163,6 +163,21 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
 - **Excluded models are excluded, never dropped.** Collection and archiving always cover everything
   the sources publish; `/api/view?all=1` opens the board so the cost of the restriction is visible.
 
+## The page: web platform rules
+
+- **Browser support:** use features that are Baseline *widely available* freely. A newer feature
+  only with a small fallback of our own (at most ~20 lines), or as a pure enhancement that
+  degrades to something that works (`hidden="until-found"`, `closedby`). No polyfills, no
+  dependencies — the "no framework" rule covers them.
+- **Before touching HTML/CSS/client JS, consult `modern-web-guidance`** (Google Chrome's
+  skill, installed under `~/.claude/skills`; `npx -y modern-web-guidance@latest search|retrieve`
+  is allowed). It is the reference for patterns; this file wins where they disagree.
+- **One-of-several switches are radio groups, not tabs.** Tier, patience and chart pick one
+  option and have no panel per option: native radios inside labels styled as buttons
+  (`:has(:checked)`). Only the section strip is a real tablist — `role="tabpanel"` sections,
+  one tab stop, arrows to move, Enter to open, panels `hidden="until-found"` so find-in-page
+  reaches them.
+
 ## Behavioural guidelines (Andrej Karpathy skills)
 
 1. **Think before coding** — state assumptions; surface interpretations; ask when a significant

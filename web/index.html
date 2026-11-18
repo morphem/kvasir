@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0b0e14">
 <!-- Applied before the first paint, so a stored theme never flashes the other one. Same key and
      same rule as blinkneuron.eu: an explicit choice wins, otherwise the system setting does. -->
-<script>try{var t=localStorage.getItem('bn.theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}</script>
+<script>try{var t=localStorage.getItem('bn.theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;document.querySelector('meta[name="color-scheme"]').content=t}}catch(e){}</script>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230b0e14'/><text x='16' y='23' font-family='system-ui,sans-serif' font-size='20' font-weight='700' fill='%23e8ecf1' text-anchor='middle'>n</text></svg>">
 <link rel="stylesheet" href="/style.css">
 </head>
@@ -45,9 +45,9 @@
     </div>
     <div class="topbar-right">
       <div class="eyebrow">Organisation AI credits tier</div>
-      <div class="tier-tabs" id="tier-tabs" role="tablist" aria-label="AI credits tier"></div>
+      <div class="tier-tabs" id="tier-tabs" role="radiogroup" aria-label="AI credits tier"></div>
       <div class="eyebrow" style="margin-top:.9rem">How long one loop may take</div>
-      <div class="tier-tabs" id="patience-tabs" role="tablist" aria-label="Patience"></div>
+      <div class="tier-tabs" id="patience-tabs" role="radiogroup" aria-label="Patience"></div>
       <p id="tier-note"></p>
     </div>
   </header>
@@ -83,7 +83,7 @@
         <button class="toggle" id="toggle-market" aria-pressed="false">Show the rest of the market</button>
       </div>
     </div>
-    <div class="map-tabs" id="map-tabs" role="tablist" aria-label="Chart"></div>
+    <div class="map-tabs" id="map-tabs" role="radiogroup" aria-label="Chart"></div>
     <div class="chart-box">
       <div class="map-key">
         <span><i class="key-quadrant"></i> Most attractive quadrant</span>
@@ -104,12 +104,12 @@
     <div class="chart-detail" id="chart-detail" hidden></div>
   </section>
 
-  <section id="budget-section" data-panel="budget">
+  <section id="budget-section" data-panel="budget" hidden="until-found">
     <div class="eyebrow">A month on this tier</div>
     <h2 id="budget-title"></h2>
     <p class="dim" id="budget-verdict" style="margin:.5rem 0 0;max-width:80ch"></p>
     <div class="budget-bar" aria-hidden="true"><span id="budget-fill"></span></div>
-    <div class="table-scroll">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="A month on this tier">
       <table id="budget-table">
         <thead><tr>
           <th>Role</th><th>Model</th><th class="num">Credits / task</th>
@@ -121,7 +121,7 @@
     <p class="dim" id="budget-assumptions" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
-  <section data-panel="value">
+  <section data-panel="value" hidden="until-found">
     <div class="eyebrow">Is the upgrade worth it</div>
     <h2>The distance between roles</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -131,14 +131,14 @@
     <div class="gaps" id="gaps"></div>
   </section>
 
-  <section data-panel="tasks">
+  <section data-panel="tasks" hidden="until-found">
     <div class="eyebrow">Quick pick</div>
     <h2>Task → agent</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
       The jobs that actually land here. On the right, the model and the effort level you start
       with — so you do not have to compare benchmarks yourself.
     </p>
-    <div class="table-scroll">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Task to agent">
       <table id="tasks">
         <thead><tr>
           <th>Task</th><th>Role</th><th>Start with</th>
@@ -149,7 +149,7 @@
     </div>
   </section>
 
-  <section data-panel="value">
+  <section data-panel="value" hidden="until-found">
     <div class="section-head">
       <div>
         <div class="eyebrow">Cost vs quality</div>
@@ -166,7 +166,7 @@
     <div class="ladder" id="ladder"></div>
   </section>
 
-  <section data-panel="drift">
+  <section data-panel="drift" hidden="until-found">
     <div class="eyebrow">AI Stupid Level</div>
     <h2>Model drift over time</h2>
     <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
@@ -179,7 +179,7 @@
     <p class="note" id="drift-stale" hidden></p>
     <p hidden>
     </p>
-    <div class="table-scroll">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Model drift">
       <table id="drift">
         <thead><tr>
           <th>Model</th><th class="num">Score</th><th data-nosort>7 days</th>
@@ -192,7 +192,7 @@
     </div>
   </section>
 
-  <section data-panel="models">
+  <section data-panel="models" hidden="until-found">
     <div class="section-head">
       <div>
         <div class="eyebrow">Every model we can start</div>
@@ -206,7 +206,7 @@
       </div>
       <div class="controls" id="wait-filter" role="group" aria-label="Longest time per task"></div>
     </div>
-    <div class="table-scroll">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="Every model we can start">
       <table id="models">
         <thead><tr>
           <th>Model · effort</th>
@@ -226,7 +226,7 @@
     <p class="dim" id="models-note" style="margin:1rem 0 0;font-size:.85rem"></p>
   </section>
 
-  <section data-panel="method">
+  <section data-panel="method" hidden="until-found">
     <div class="eyebrow">How the verdict is computed</div>
     <h2>Method, and what the colours mean</h2>
     <div class="key" style="margin:1.2rem 0 0;border:0;padding:0">
@@ -250,7 +250,7 @@
   </footer>
 
 </div>
-<dialog class="news" id="news" aria-labelledby="news-title">
+<dialog class="news" id="news" closedby="any" aria-labelledby="news-title">
   <div class="news-head">
     <div>
       <div class="eyebrow" id="news-kicker"></div>
