@@ -125,6 +125,7 @@ def merge(
                 "vendor": vendor_of(key),
                 "score": row["score"],
                 "terminal_bench": row.get("terminal_bench"),
+                "automation_bench": row.get("automation_bench"),
                 "cost_uusd": row.get("cost_uusd"),
                 "cost_usd": _usd(row.get("cost_uusd")),
                 # Artificial Analysis times a new release before it prices it. Such a variant

@@ -141,7 +141,7 @@ section { margin-top: 3.4rem; }
 .section-head p { color: var(--dim); margin: 0.5rem 0 0; max-width: 70ch; font-size: 0.95rem; }
 
 /* ---- verdict cards ---- */
-.verdicts { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); margin-top: 1.5rem; }
+.verdicts { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 1.5rem; }
 .card {
   background: var(--raise);
   border: 1px solid var(--edge);
@@ -154,6 +154,7 @@ section { margin-top: 3.4rem; }
 .card { overflow: hidden; }
 .card.architect { border-top: 2px solid var(--violet); --accent: var(--violet); --band: color-mix(in srgb, var(--violet) 13%, transparent); }
 .card.worker { border-top: 2px solid var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 11%, transparent); }
+.card.subagent { border-top: 2px dashed var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 6%, transparent); }
 .card.scout { border-top: 2px solid var(--dim); --accent: var(--dim); --band: color-mix(in srgb, var(--dim) 11%, transparent); }
 
 /* The role is the first thing to find on the card, so it gets a band across the whole box:

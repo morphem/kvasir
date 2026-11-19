@@ -545,6 +545,11 @@ function renderVerdicts(view, animate) {
           `${credits(reach.ceiling_credits)}-credit ceiling for planning.`
       );
     }
+    if (role.id === "subagent" && slot.under_bar) {
+      notes.push(
+        `Under the agentic bar: nothing at ${idx(slot.bar.score)} or more finishes within this patience.`
+      );
+    }
     if (slot.drift_replaced) {
       notes.push(`Drift veto: ${slot.drift_replaced} scores as well but is sliding on AI Stupid Level.`);
     }
@@ -569,9 +574,17 @@ function renderVerdicts(view, animate) {
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
         ${clock(role.id, pick, slot.ceiling_minutes, animate)}
         <div class="metrics">
-          <div class="metric"><b>${idx(pick.score)}</b><span>Intelligence</span></div>
+          ${
+            role.id === "subagent"
+              ? `<div class="metric"><b>${idx(slot.agentic_score)}</b><span>Agentic</span></div>`
+              : `<div class="metric"><b>${idx(pick.score)}</b><span>Intelligence</span></div>`
+          }
           <div class="metric"><b data-count="card-${role.id}-task" data-value="${slot.per_task_credits ?? ""}"></b><span>credits / task</span></div>
-          <div class="metric"><b data-count="card-${role.id}-month" data-value="${slot.month_credits ?? ""}"></b><span>credits / mo</span></div>
+          ${
+            role.id === "subagent"
+              ? `<div class="metric"><b data-count="card-${role.id}-extra" data-value="${slot.extra_per_day ?? ""}"></b><span>runs / day spare</span></div>`
+              : `<div class="metric"><b data-count="card-${role.id}-month" data-value="${slot.month_credits ?? ""}"></b><span>base credits / mo</span></div>`
+          }
         </div>
         <p class="why">${escapeHtml(slot.why || "")}</p>
         ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
@@ -590,7 +603,9 @@ function renderVerdicts(view, animate) {
   $("#verdict-sub").textContent = tier
     ? `Filled inside the ${tier.name} tier's monthly budget at ${
         level ? level.label.toLowerCase() : state.patience
-      } patience — ${tier.used_pct}% of it planned, about $${num(tier.month_usd)} a month.`
+      } patience: ${credits(tier.day_credits)} credits a day, ${credits(
+        tier.spare_day_credits
+      )} of them spare for more runs.`
     : "";
 }
 
@@ -699,6 +714,13 @@ function propertyRows(pick, view) {
       "",
     ],
     [
+      "agentic",
+      pick.automation_bench === null || pick.automation_bench === undefined
+        ? '<span class="dim">not run</span>'
+        : `${pick.automation_bench.toFixed(1)}% <span class="dim">AutomationBench</span>`,
+      "",
+    ],
+    [
       "drift",
       drift && drift.score !== null
         ? `${Math.round(drift.score)} · ${
@@ -737,30 +759,36 @@ function renderBudget(view, animate) {
   const current = plan();
   if (!current) return;
   const assumptions = view.assumptions;
-  const used = current.used_pct ?? 0;
+  const day = current.day_credits || 0;
+  const base = Math.min(current.base_day_credits || 0, day);
+  const used = day ? (100 * base) / day : 0;
 
   const title = $("#budget-title");
-  title.innerHTML = `${escapeHtml(current.name)}: <span data-count="budget-month" data-value="${
-    current.month_credits
-  }"></span> of ${num(current.credits)} credits`;
+  title.innerHTML = `${escapeHtml(current.name)}: <span data-count="budget-day" data-value="${
+    current.day_credits
+  }"></span> credits a working day`;
   runCounters(title, animate);
 
   const fill = $("#budget-fill");
   fill.style.width = `${Math.min(100, used)}%`;
-  fill.className = used > 100 ? "over" : used > 80 ? "tight" : "";
+  fill.className = used > 100 ? "over" : "";
 
+  const extra = current.extra_per_day || {};
+  const options = [
+    extra.worker !== undefined && `${num(extra.worker)} more worker tasks`,
+    extra.subagent !== undefined && `${num(extra.subagent)} subagent runs`,
+    extra.architect !== undefined && `${num(extra.architect)} more plans`,
+  ].filter(Boolean);
   const referenceLine = current.reference_fits
-    ? `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits here — ${current.reference_used_pct}% of the tier, so the budget is not what decides your models.`
-    : `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits — ${current.reference_used_pct}% of this tier. At ${current.name} the budget, not the benchmark, picks your models.`;
-
-  const stopped = current.stopped_note
-    ? ` It stops there because ${current.stopped_note}.`
-    : "";
+    ? `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits a month — ${current.reference_used_pct}% of the tier, so the budget is not what decides your models.`
+    : `The shortlist chosen on merit alone would cost ${credits(current.reference_credits)} credits a month — ${current.reference_used_pct}% of this tier. At ${current.name} the budget, not the benchmark, picks your models.`;
   $("#budget-verdict").textContent =
-    `About $${num(current.month_usd)} a month for an average engineer's workload, leaving ` +
-    `${credits(current.headroom_credits)} credits of headroom (${Math.max(0, 100 - used).toFixed(0)}%).` +
-    stopped +
-    " " +
+    `${num(assumptions.tasks_per_day)} tasks — the base day the models are sized on — take ` +
+    `${credits(current.base_day_credits)} of the ${credits(day)} credits (${used.toFixed(0)}%). ` +
+    (options.length
+      ? `The other ${credits(current.spare_day_credits)} are there to be used: each day they buy ` +
+        `${options.join(", or ")}. Unused credits buy nothing. `
+      : "") +
     referenceLine;
 
   const body = $("#budget-table tbody");
@@ -769,39 +797,38 @@ function renderBudget(view, animate) {
     const slot = current.roles[role.id];
     if (!slot) return;
     const label = slot.pick ? slot.pick.label : "—";
+    const baseTasks = assumptions.tasks_by_role[role.id];
+    const perDay =
+      slot.month_credits === undefined ? "—" : credits(slot.month_credits / assumptions.working_days);
     body.append(
       tag(`<tr>
         <td><span class="tier-chip ${role.accent}">${escapeHtml(role.name)}</span></td>
         <td class="pick-cell">${escapeHtml(label)}</td>
         <td class="num">${credits(slot.per_task_credits)}</td>
-        <td class="num">${slot.tasks_per_month ?? "—"}</td>
-        <td class="num">${credits(slot.month_credits)}</td>
-        <td class="num ${slot.share_used_pct > 100 ? "violet" : "dim"}">${
-          slot.share_used_pct === undefined || slot.share_used_pct === null
-            ? "—"
-            : slot.share_used_pct.toFixed(0) + "%"
-        }</td>
+        <td class="num">${baseTasks === undefined ? "—" : num(baseTasks / assumptions.working_days)}</td>
+        <td class="num">${perDay}</td>
+        <td class="num cyan">${slot.extra_per_day === undefined ? "—" : "+" + num(slot.extra_per_day)}</td>
       </tr>`)
     );
   });
 
   $("#budget-assumptions").textContent =
-    `Assumes ${assumptions.working_days} working days × ${assumptions.tasks_per_day} agent tasks = ` +
-    `${assumptions.tasks_per_month} tasks a month (${assumptions.tasks_by_role.architect} planning, ` +
-    `${assumptions.tasks_by_role.worker} ordinary, ${assumptions.tasks_by_role.scout} mechanical), ` +
-    `one project at a time and no parallel sessions, ×${assumptions.overhead} for chat and retries. ` +
-    `A task is one Artificial Analysis Intelligence Index task, averaged over its ten evaluations. ` +
-    `The worker and the scout are the roles you iterate with, so at this patience a variant that ` +
-    `takes longer than ${ceilingText((assumptions.patience[state.patience] || {}).worker)} (worker) or ` +
-    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) per task cannot take ` +
-    `one — the architect is exempt, because a plan is made once and on purpose. A variant nobody has ` +
-    `timed is not treated as slow, unless a lower effort of the same model already takes longer. ` +
-    `The plan then spends the surplus up to ${Math.round(assumptions.target_utilisation * 100)}% of the ` +
-    `tier and never plans past ${Math.round(assumptions.max_utilisation * 100)}% — an unused credit ` +
-    `buys nothing, and the month is a model rather than a meter. ` +
-    `The opening split is ${Math.round(assumptions.budget_shares.architect * 100)}/` +
+    `A tier is ${assumptions.working_days} working days of credits, to be used up — credits left at the ` +
+    `end of the month pool back and buy nothing. The models are sized on a base day of ` +
+    `${assumptions.tasks_per_day} agent tasks (${num(assumptions.tasks_by_role.architect / assumptions.working_days)} planning, ` +
+    `${num(assumptions.tasks_by_role.worker / assumptions.working_days)} ordinary, ` +
+    `${num(assumptions.tasks_by_role.scout / assumptions.working_days)} mechanical), ×${assumptions.overhead} for chat and ` +
+    `retries, split ${Math.round(assumptions.budget_shares.architect * 100)}/` +
     `${Math.round(assumptions.budget_shares.worker * 100)}/` +
-    `${Math.round(assumptions.budget_shares.scout * 100)} between the roles. ` +
+    `${Math.round(assumptions.budget_shares.scout * 100)} between the roles — the smallest day worth ` +
+    `planning for, not a forecast. What the day buys past it is shown per role, as if spent on that ` +
+    `role alone, ×${assumptions.overhead} included; past the patience limit money buys more runs in ` +
+    `parallel, not a better loop model. A task is one Artificial Analysis Intelligence Index task, ` +
+    `averaged over its evaluations. The worker, the scout and the subagent are the roles you iterate ` +
+    `with, so at this patience a variant that takes longer than ` +
+    `${ceilingText((assumptions.patience[state.patience] || {}).worker)} (worker, subagent) or ` +
+    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) per task cannot take ` +
+    `one — the architect is exempt, because a plan is made once and on purpose. ` +
     `Code completions are not billed in credits, so they are not counted here.`;
 }
 
@@ -1104,12 +1131,12 @@ function renderMap(view) {
   const picks = {};
   const current = plan();
   Object.entries((current && current.roles) || {}).forEach(([role, slot]) => {
-    if (slot.pick) picks[candidateId(slot.pick)] = role;
+    if (slot.pick && !(candidateId(slot.pick) in picks)) picks[candidateId(slot.pick)] = role;
   });
   const onFront = new Set(front.map((p) => p.id));
   const efforts = {};
   view.candidates.forEach((c) => (efforts[c.key] = (efforts[c.key] || 0) + 1));
-  const colour = { architect: "var(--violet)", worker: "var(--cyan)", scout: "var(--dim)" };
+  const colour = { architect: "var(--violet)", worker: "var(--cyan)", scout: "var(--dim)", subagent: "var(--cyan)" };
 
   // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
   // not print over each other; a dot without a label still answers to hover.
@@ -1821,9 +1848,16 @@ function renderMethod(view) {
       a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}. The scout takes the cheapest model
       that is good enough: at least ${Math.round(thresholds.scout_bar * 100)}% of the leader's score. A
       share of the leader rather than a fixed score, because the index is re-based between versions and
-      the market climbs. Then the unused credits are spent on the architect, then the worker — never on
-      the scout — up to ${Math.round(assumptions.target_utilisation * 100)}% of the tier. A lower role
-      never costs more per task, or scores more, than the role above it.</div>
+      the market climbs. A lower role never costs more per task, or scores more, than the role above
+      it. These picks are sized on a small base day; the rest of the tier's daily credits is shown as
+      throughput — more runs, not dearer models.</div>
+    <div>The subagent is what the architect hands a sub-task to and does not watch. It is chosen on
+      Artificial Analysis's agentic evaluations rather than the Intelligence Index: AutomationBench
+      (multi-step work across tools and APIs) and Terminal-Bench 4.0 (agentic coding in a terminal),
+      averaged. Like the scout it takes the cheapest model that is good enough — at least
+      ${Math.round(assumptions.subagent_bar * 100)}% of the agentic leader — within the worker's
+      patience. Both evaluations run in Artificial Analysis's own agent harness, not in Copilot's, and
+      cost and time per task still come from the Intelligence Index runs.</div>
     <div>Patience sets the longest a loop role may take over one task — Artificial Analysis's time per
       index task, reasoning included: ${escapeHtml(levels)}. You iterate with the worker and the scout,
       so one slow loop makes the whole session slow; the architect plans once and is never on this

@@ -54,8 +54,11 @@ def test_every_tier_gets_a_full_plan_that_states_its_arithmetic():
     for tier in payload["budget_tiers"]:
         plan = payload["plans"][tier["id"]][budget.DEFAULT_PATIENCE]
         assert plan["usd"] == round(tier["credits"] * 0.01, 2)
-        assert set(plan["roles"]) == {"architect", "worker", "scout"}
-        rebuilt = sum(role["month_credits"] for role in plan["roles"].values() if role["pick"])
+        assert set(plan["roles"]) == {"architect", "worker", "scout", "subagent"}
+        rebuilt = sum(
+            role["month_credits"] for name, role in plan["roles"].items()
+            if role["pick"] and name != "subagent"
+        )
         assert abs(rebuilt - plan["month_credits"]) <= 2  # rounding only
         for role in plan["roles"].values():
             assert role["why"]
@@ -79,8 +82,9 @@ def test_the_plan_fits_the_month_it_was_built_for():
 def test_a_tier_too_small_for_anything_says_so():
     payload = view(tiers=[{"id": "sliver", "name": "Sliver", "credits": 10}])
     roles = payload["plans"]["sliver"][budget.DEFAULT_PATIENCE]["roles"]
-    assert all(role["pick"] is None for role in roles.values())
-    assert all("Nothing on the board" in role["why"] for role in roles.values())
+    base = [roles[name] for name in ("architect", "worker", "scout")]
+    assert all(role["pick"] is None for role in base)
+    assert all("Nothing on the board" in role["why"] for role in base)
 
 
 def test_the_mechanical_role_never_outranks_the_planning_one():
@@ -93,25 +97,10 @@ def test_the_mechanical_role_never_outranks_the_planning_one():
         # ...and on price: a scout dearer than the worker is a worse worker, not a scout.
         assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
         assert roles["worker"]["pick"]["cost_uusd"] <= roles["architect"]["pick"]["cost_uusd"]
-        # A budget the board cannot absorb is not spent for the sake of spending it.
-        assert plan["used_pct"] < 100 * budget.MAX_UTILISATION
 
 
-def test_a_tier_is_used_or_says_what_stopped_it():
-    """Unused credits buy nothing. Stopping short is allowed; stopping silently is not."""
-    for plan in every_plan(view()):
-        if plan["used_pct"] >= 100 * budget.TARGET_UTILISATION:
-            assert plan["stopped_because"] is None
-            continue
-        assert plan["stopped_because"] in budget.STOP_REASONS
-        assert plan["stopped_note"]
 
 
-def test_the_surplus_walk_runs_or_says_why_it_did_not():
-    """Either the tier gets used, or the plan names what stopped it. Never neither."""
-    for plan in every_plan(view()):
-        moved = any(role.get("upgraded_from") for role in plan["roles"].values())
-        assert moved or plan["stopped_because"], f"{plan['name']} neither spent nor explained"
 
 
 def test_a_role_you_iterate_with_never_outlasts_its_patience():
@@ -151,42 +140,10 @@ def test_an_untimed_model_takes_no_loop_seat_under_a_ceiling_and_is_named():
     assert view["plans"]["basic"]["any"]["roles"]["worker"]["pick"]["key"] == "argon"
 
 
-def test_no_plan_ever_passes_the_safety_cap():
-    """The month is a model, not a meter — leave room for a heavier one."""
-    for plan in every_plan(view()):
-        assert plan["month_credits"] <= plan["credits"] * budget.MAX_UTILISATION + 1
 
 
-def test_surplus_reaches_planning_before_the_mechanical_role():
-    """Cheapest-point buying once put an Opus on the scout while the worker was still light.
-
-    Built rather than observed: every role is given the same affordable ladder and enough
-    budget for exactly one step, so which role takes it is the rule under test and nothing
-    else.
-    """
-    # Sized so the opening shares cannot reach the top rung but the tier's surplus can —
-    # otherwise every role starts at the top and there is nothing to order.
-    rows = [
-        aa_row(f"rung{index}", "max", score, cost, minutes=0.5)
-        for index, (score, cost) in enumerate([(50.0, 1_000_000), (55.0, 3_000_000), (60.0, 30_000_000)])
-    ]
-    settings = Settings(tiers=[{"id": "one_step", "name": "One step", "credits": 100_000}])
-    plan = recommend.build(
-        rows, [], sold(*(row["model_key"] for row in rows)), settings, [], credit_usd=0.01
-    )["plans"]["one_step"][budget.DEFAULT_PATIENCE]
-    roles = plan["roles"]
-    assert roles["architect"]["upgraded_from"], "the surplus skipped planning"
-    assert not roles["scout"]["upgraded_from"], "the mechanical role was served first"
 
 
-def test_spending_the_surplus_keeps_three_distinct_roles():
-    for plan in every_plan(view()):
-        picks = [
-            (role["pick"]["key"], role["pick"]["effort"])
-            for role in plan["roles"].values()
-            if role["pick"] and role.get("upgraded_from")
-        ]
-        assert len(picks) == len(set(picks)), "a bought-up role landed on another role's model"
 
 
 def test_assumptions_are_published_with_the_answer():
@@ -276,10 +233,6 @@ def test_the_scout_is_the_cheapest_variant_over_the_bar():
             assert not cheaper, f"{tier_id}/{patience_id}: {cheaper[0]['label']} was cheaper"
 
 
-def test_the_surplus_never_buys_up_the_scout():
-    """An unused credit buys the architect and the worker quality; the scout stays cheap."""
-    for plan in every_plan(view()):
-        assert not plan["roles"]["scout"]["upgraded_from"]
 
 
 def test_a_cheaper_variant_too_slow_for_the_scout_is_named():
@@ -308,3 +261,50 @@ def test_a_scout_with_nothing_over_the_bar_takes_the_best_that_fits_and_says_so(
     assert scout["under_bar"] is True
     assert scout["pick"]["key"] == "weak"
     assert "Nothing at 75% of the leader (45.0)" in scout["why"]
+
+
+def test_the_spare_allowance_is_reported_as_throughput():
+    """Unused credits buy nothing, so the day's allowance past the base day becomes more runs."""
+    for plan in every_plan(view()):
+        assert plan["day_credits"] == round(plan["credits"] / budget.WORKING_DAYS)
+        assert plan["spare_day_credits"] == max(plan["day_credits"] - plan["base_day_credits"], 0) or (
+            abs(plan["spare_day_credits"] - (plan["day_credits"] - plan["base_day_credits"])) <= 1
+        )
+        worker = plan["roles"]["worker"]
+        if worker["pick"]:
+            price = worker["per_task_credits"] * budget.OVERHEAD
+            assert worker["extra_per_day"] == int(plan["spare_day_credits"] / price) or abs(
+                worker["extra_per_day"] - plan["spare_day_credits"] / price
+            ) <= 1
+    heavy = view()["plans"]["heavy"][budget.DEFAULT_PATIENCE]
+    power = view()["plans"]["power"][budget.DEFAULT_PATIENCE]
+    assert power["extra_per_day"]["worker"] > heavy["extra_per_day"]["worker"]
+
+
+def agentic_row(key, effort, score, cost_uusd, automation, terminal, minutes=1.0):
+    return {**aa_row(key, effort, score, cost_uusd, minutes=minutes),
+            "automation_bench": automation, "terminal_bench": terminal}
+
+
+def test_the_subagent_is_the_cheapest_good_enough_on_the_agentic_evaluations():
+    """Chosen on AutomationBench and Terminal-Bench, not the Intelligence Index."""
+    rows = [
+        agentic_row("smart", "max", 60.0, 5_000_000, 70.0, 60.0, minutes=2),   # leader: 65
+        agentic_row("doer", "low", 40.0, 200_000, 60.0, 40.0),                 # 50: over 48.75
+        agentic_row("clever", "low", 50.0, 150_000, 30.0, 20.0),               # higher index, weak agent
+        agentic_row("slowdoer", "low", 40.0, 100_000, 62.0, 42.0, minutes=9),  # over the bar, too slow
+    ]
+    view = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
+    sub = view["plans"]["heavy"]["balanced"]["roles"]["subagent"]
+    assert sub["pick"]["key"] == "doer"
+    assert sub["agentic_score"] == 50.0
+    assert sub["speed_blocked"]["label"].startswith("Slowdoer")
+    assert view["plans"]["heavy"]["any"]["roles"]["subagent"]["pick"]["key"] == "slowdoer"
+
+
+def test_a_board_without_agentic_scores_says_so_instead_of_picking():
+    payload = view()
+    for plan in every_plan(payload):
+        sub = plan["roles"]["subagent"]
+        if sub["pick"] is None:
+            assert "agentic" in sub["why"]

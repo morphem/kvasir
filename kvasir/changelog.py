@@ -17,6 +17,32 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.12",
+        "date": "2026-11-19",
+        "title": "A fourth role, the subagent — and a tier read as a day to use up",
+        "items": [
+            {
+                "text": "New card: Subagent, the model your architect hands sub-tasks to and does not "
+                "watch. It is chosen on Artificial Analysis's agentic evaluations — AutomationBench "
+                "(multi-step work across tools and APIs) and Terminal-Bench (agentic coding) — not on "
+                "the Intelligence Index: the cheapest model within your patience that reaches three "
+                "quarters of the agentic leader. Every card now shows its AutomationBench score.",
+            },
+            {
+                "text": "The tier is now a daily allowance to use up — Power is 10,000 credits a working "
+                "day, Heavy 5,000, Basic 650 — instead of a month planned to 80%. The models are "
+                "still chosen on a small base day; what the rest of the day buys is shown per role: "
+                "so many more worker tasks, subagent runs or plans. Credits left over at month end "
+                "buy nothing.",
+                "where": {"panel": "budget"},
+            },
+            {
+                "text": "Some picks change with it: the leftover credits no longer buy a dearer model, "
+                "because past the patience limit money buys more runs, not a quicker one.",
+            },
+        ],
+    },
+    {
         "version": "2.11",
         "date": "2026-11-19",
         "title": "Easier on a phone and from the keyboard",

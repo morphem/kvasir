@@ -131,6 +131,7 @@ def _row(record: dict) -> dict:
     tokens = _num((record.get("intelligenceIndexOutputTokensPerTask") or {}).get("output"))
     first_answer = record.get("timeToFirstAnswerToken") or {}
     terminal = _num(record.get("terminalBench40"))
+    automation = _num(record.get("automationBenchPartialScore"))
     # "Weighted average decode time per task; excludes TTFT and overhead time" — in seconds in
     # the record (their chart shows minutes). Measured in the same runs as the score and the
     # cost, so every priced variant has one: it is how long one loop of an agent takes.
@@ -146,6 +147,7 @@ def _row(record: dict) -> dict:
         "cost_uusd": usd_to_uusd(cost),
         "output_tokens": round(tokens) if tokens is not None else None,
         "terminal_bench": _round(terminal * 100) if terminal is not None else None,
+        "automation_bench": _round(automation * 100) if automation is not None else None,
         "tokens_per_second": _round(
             _num((record.get("timescaleData") or {}).get("medianOutputSpeed"))
         ),
@@ -174,6 +176,8 @@ def _measured(entry: dict) -> dict:
     terminal = _num(entry.get("terminalBench40"))
     if terminal is None:
         terminal = _num((entry.get("scores") or {}).get("terminalbench-4-0"))
+    # Multi-step work across tools and APIs: the closest measure of a delegated subagent.
+    automation = _num((entry.get("scores") or {}).get("automationbench-aa"))
     measured = {
         "source_name": entry["name"],
         "score": _round(_num(entry.get("intelligenceIndex"))),
@@ -191,10 +195,12 @@ def _measured(entry: dict) -> dict:
         "end_to_end_seconds": _round(_num(entry.get("medianEndToEndResponseTimeSeconds")) or None),
         "deprecated": bool(entry.get("deprecated")),
     }
-    # Only when the table has it: an older table without it must not erase the page's clock.
+    # Only when the table has them: an older table without them must not erase the page's.
     task_seconds = _num(entry.get("intelligenceIndexTimePerTask"))
     if task_seconds:
         measured["task_seconds"] = _round(task_seconds)
+    if automation is not None:
+        measured["automation_bench"] = _round(automation * 100)
     return measured
 
 

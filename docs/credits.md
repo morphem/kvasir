@@ -97,9 +97,17 @@ were not re-derived — treat that as an open question, not as a tuned result.
   time of a timed lower effort of the same model; with no time at all it takes no loop seat while a
   limit is set (since 2026-10-14 — before, it passed, and the untimed Gemini 4 Argon · High took the
   Fast worker and the Fast scout at once). At Any pace it competes.
-- **Surplus** — once the economical picks are in, the plan spends the tier up to 80% on the
-  architect, then the worker — never on the scout — and never past 90%. A lower role may not score more, or cost more per task, than the role
-  above it, and may not land on another role's exact variant.
+- **Subagent** (since 2026-11-19) — the agent the architect delegates to. The cheapest variant
+  within the worker's patience at **75% of the agentic leader**, where the agentic score is the
+  mean of AutomationBench-AA and Terminal-Bench 4.0. Not bound by a share: its runs are what the
+  spare allowance buys.
+- **Throughput** (since 2026-11-19, replacing the surplus walk) — a tier is credits ÷ 20 working
+  days, to be used up. The base day above takes a small part of it; the rest is printed as what it
+  buys per role, alone: so many more worker tasks, subagent runs or plans a day. Until 2026-11-19
+  the plan instead bought dearer models with the surplus up to 80% of the tier (never past 90%);
+  under a patience ceiling that stopped at 7% on Power, because money cannot buy a quicker loop.
+  A lower role may not score more, or cost more per task, than the role above it, and may not land
+  on another role's exact variant.
 
 The per-point ceilings are the same thresholds the value ladder shows on the page, and the scout's
 bar is printed in the method panel, so nothing here is a private knob.

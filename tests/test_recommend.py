@@ -52,8 +52,11 @@ def test_every_tier_gets_a_pick_with_an_effort():
     for by_patience in view["plans"].values():
         assert set(by_patience) == set(budget.PATIENCE)
         for plan in by_patience.values():
-            for slot in plan["roles"].values():
+            for name, slot in plan["roles"].items():
                 pick = slot["pick"]
+                if name == "subagent" and pick is None:
+                    assert "agentic" in slot["why"]  # the September board predates the scores
+                    continue
                 assert pick["effort"] in {"low", "medium", "high", "xhigh", "max"}
                 assert pick["effort_label"] in pick["label"]
                 assert slot["why"]
@@ -88,7 +91,9 @@ def test_an_unpriced_variant_is_shown_but_never_planned():
     assert all(rung["key"] != "gpt-6-luna" for rung in view["ladder"])
     for by_patience in view["plans"].values():
         for plan in by_patience.values():
-            assert all(slot["pick"]["key"] != "gpt-6-luna" for slot in plan["roles"].values())
+            assert all(
+                slot["pick"]["key"] != "gpt-6-luna" for slot in plan["roles"].values() if slot["pick"]
+            )
 
 
 def test_non_reasoning_variants_never_reach_the_board():
@@ -137,7 +142,7 @@ def test_tasks_carry_their_role():
     view = build()
     assert len(view["tasks"]) >= 10
     for task in view["tasks"]:
-        assert task["tier"] in {"architect", "worker", "scout"}
+        assert task["tier"] in {"architect", "worker", "scout", "subagent"}
         assert task["tier_name"]
 
 
@@ -180,6 +185,9 @@ def test_capture_archives_the_verdict_once_per_change():
         for patience_id, roles in by_patience.items():
             for role, pick in roles.items():
                 want = expected[tier_id][patience_id]["roles"][role]["pick"]
+                if want is None:
+                    assert pick is None
+                    continue
                 assert (pick["key"], pick["effort"], pick["score"]) == (
                     want["key"], want["effort"], want["score"]
                 )

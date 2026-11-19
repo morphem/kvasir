@@ -1,6 +1,6 @@
 """The task catalogue — the page's actual answer to "which agent do I start?".
 
-Three tiers, and a list of the jobs that actually land on this desk mapped onto them. The
+Four roles, and a list of the jobs that actually land on this desk mapped onto them. The
 tiers are roles, not model names: which model fills a role is decided from live data in
 recommend.py and changes as the benchmarks move.
 
@@ -45,6 +45,18 @@ TIERS = [
         ),
         "accent": "dim",
     },
+    {
+        "id": "subagent",
+        "name": "Subagent",
+        "role": "Runs what the architect hands off",
+        "description": (
+            "The agent the architect delegates to and does not watch: search, run, fix, report "
+            "back. Chosen on agentic evaluations — multi-step work across tools and a terminal — "
+            "not on the Intelligence Index: the cheapest within patience that reaches three "
+            "quarters of the agentic leader. The tier's spare credits are mostly its runs."
+        ),
+        "accent": "cyan",
+    },
 ]
 
 TASKS = [
@@ -76,6 +88,11 @@ TASKS = [
      "note": "Short, formulaic, and verified at a glance."},
     {"id": "locate", "tier": "scout", "label": "Quick “where is this in the code”",
      "note": "Searching, not reasoning."},
+
+    {"id": "delegated-fix", "tier": "subagent", "label": "Sub-task from the plan: change, run the tests, report",
+     "note": "Nobody watches it run, so it is chosen on how agents finish multi-step work, not on recall."},
+    {"id": "fan-out", "tier": "subagent", "label": "Many small investigations in parallel",
+     "note": "Where a large tier's spare credits go: more runs at once, not a dearer model."},
 ]
 
 TIER_BY_ID = {tier["id"]: tier for tier in TIERS}

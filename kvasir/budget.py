@@ -10,15 +10,23 @@ budget: one Intelligence Index task at $2.31 is 231 credits, and a tier is just 
 credits per month.
 
 The month is modelled, not measured — nobody has a per-task meter — so every assumption
-below is a named constant that the page prints next to the result. The profile is the
-*average* engineer: one project or integration at a time, no parallel sessions.
+below is a named constant that the page prints next to the result.
+
+Since 2026-11-19 a tier is read as a daily allowance to be used up, not a ceiling to stay
+under (owner's call): credits left at the end of the month buy nothing, and more agent runs
+are more work done. The picks are sized on a *base day* — a few tasks in a fixed mix, the
+smallest day worth planning for — so a small tier still gets models it can actually run. What
+the day's allowance buys beyond that base day is the tier's throughput: so many more worker
+tasks, subagent runs or architect plans. Patience caps how good a loop model may be, so past
+a point money cannot buy a better one — only more of them, in parallel.
 """
 
 from __future__ import annotations
 
-# What "a month of work" means here. Deliberately conservative on task count and honest
-# about the fact that not every interaction looks like a benchmark task.
-WORKING_DAYS = 21
+# The base day the picks are sized on: the smallest day worth planning for, not a forecast of
+# a real one — everything the allowance buys past it is reported as throughput. Twenty working
+# days is the owner's figure (2026-11-19): 200K credits is 10K a day.
+WORKING_DAYS = 20
 TASKS_PER_DAY = 6
 ROLE_MIX = {"architect": 0.10, "worker": 0.50, "scout": 0.40}
 
@@ -48,8 +56,13 @@ BARGAIN_USD_PER_PP = 0.15
 # not re-tune it to put a favourite in the chair; replace it with measured usage instead.
 SCOUT_BAR = 0.75
 
-# The roles the unused credits are spent on. The scout stays cheap on purpose (see SCOUT_BAR).
-SURPLUS_ROLES = ("architect", "worker")
+# The subagent: the model the architect hands a sub-task to and does not watch. Chosen on the
+# agentic evaluations, not the Intelligence Index — AutomationBench-AA (multi-step work across
+# tools and APIs) and Terminal-Bench 4.0 (agentic coding in a terminal), averaged — by the
+# scout's rule: the cheapest variant within the worker's patience that reaches this share of
+# the agentic leader. The same three quarters as the scout, set with the role on 2026-11-19;
+# an unwatched agent fails silently, but one more number to tune is one more way to steer.
+SUBAGENT_BAR = 0.75
 
 # Patience: the longest a loop role may take over one task, in minutes. The worker and the
 # scout are the roles you iterate with — prompt, read, correct, prompt again — so the length of
@@ -77,15 +90,6 @@ PATIENCE = {
     "any": {"label": "Any pace", "worker": None, "scout": None},
 }
 DEFAULT_PATIENCE = "balanced"
-
-# An allowance is not a saving. Credits left unspent at the end of the month buy nothing —
-# they are pooled back at the billing entity — so once the economical picks are in, the plan
-# keeps climbing until it uses this much of the tier. Stopping at 27% of a 100k allowance was
-# not thrift, it was leaving capability on the table.
-TARGET_UTILISATION = 0.80
-# The month is a model, not a meter. Never plan past this, so a heavier month than assumed
-# does not run the tier dry.
-MAX_UTILISATION = 0.90
 
 CREDIT_USD_FALLBACK = 0.01
 
@@ -206,6 +210,28 @@ def _cheapest(candidates: list[dict]):
     return min(candidates, key=lambda c: (c["cost_uusd"], -c["score"]), default=None)
 
 
+def agentic_score(candidate: dict) -> float | None:
+    """AutomationBench-AA and Terminal-Bench 4.0, averaged; None unless both were run."""
+    automation, terminal = candidate.get("automation_bench"), candidate.get("terminal_bench")
+    if automation is None or terminal is None:
+        return None
+    return round((automation + terminal) / 2, 1)
+
+
+def subagent_bar(candidates: list[dict]) -> dict | None:
+    """The agentic score a subagent has to reach: SUBAGENT_BAR of the agentic leader's."""
+    scored = [c for c in candidates if agentic_score(c) is not None]
+    leader = max(scored, key=lambda c: (agentic_score(c), -c["cost_uusd"]), default=None)
+    if leader is None:
+        return None
+    return {
+        "share": SUBAGENT_BAR,
+        "score": round(agentic_score(leader) * SUBAGENT_BAR, 1),
+        "leader": leader["label"],
+        "leader_score": agentic_score(leader),
+    }
+
+
 def scout_bar(candidates: list[dict]) -> dict | None:
     """The score a scout has to reach on this board: SCOUT_BAR of the leader's."""
     leader = max(candidates, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
@@ -226,7 +252,6 @@ def _why(
     per_task: float,
     tasks: float,
     drift_replaced: dict | None = None,
-    upgraded_from: str | None = None,
     speed_blocked: dict | None = None,
     ceiling: float | None = None,
     bar: dict | None = None,
@@ -240,6 +265,16 @@ def _why(
         base = f"Best the planning share affords: {price}, ceiling {per_task_budget:.0f}."
     elif role == "worker":
         base = f"Climbs while a point costs at most ${FAIR_USD_PER_PP:.2f}. Lands at {price}."
+    elif role == "subagent" and under_bar:
+        base = (
+            f"Nothing at {bar['share']:.0%} of the agentic leader ({bar['score']:.1f}) fits this "
+            f"patience — the best agentic score that does. {price}."
+        )
+    elif role == "subagent":
+        base = (
+            f"Cheapest at {bar['share']:.0%} of the agentic leader: {bar['score']:.1f} or more "
+            f"on AutomationBench and Terminal-Bench. {price}."
+        )
     elif under_bar:
         base = (
             f"Nothing at {bar['share']:.0%} of the leader ({bar['score']:.1f}) fits this share "
@@ -247,8 +282,6 @@ def _why(
         )
     else:
         base = f"Cheapest at {bar['share']:.0%} of the leader: {bar['score']:.1f} or more. {price}."
-    if upgraded_from:
-        base += f" Bought up from {upgraded_from} with the tier's unused credits."
     if speed_blocked and speed_blocked["task_minutes"] is None:
         base += (
             f" Not {speed_blocked['label']} ({speed_blocked['score']:.1f}): not timed, so "
@@ -265,31 +298,6 @@ def _why(
     return base
 
 
-def _best_upgrade(pick: dict, pool: list[dict], credit_usd: float, allowed=None):
-    """The cheapest quality on offer above the current pick, in credits per point.
-
-    Same discipline as the value ladder, only the question is inverted: not "is this step
-    worth taking" but "if we are going to spend the surplus, where does a point cost least".
-
-    `allowed` filters the rungs this role may take at all. It belongs here rather than in the
-    caller: rejecting only the single cheapest rung and giving up on the role left a tier at
-    61% with three legal upgrades still on the board.
-    """
-    current = credits_for(pick["cost_uusd"], credit_usd)
-    best = None
-    for other in pool:
-        gain = other["score"] - pick["score"]
-        if gain <= 0:
-            continue
-        if allowed and not allowed(other):
-            continue
-        extra = credits_for(other["cost_uusd"], credit_usd) - current
-        per_point = extra / gain
-        if best is None or per_point < best[1]:
-            best = (other, per_point, extra)
-    return best
-
-
 ROLE_ORDER = {"architect": 0, "worker": 1, "scout": 2}
 
 
@@ -301,9 +309,9 @@ def _below(upper: dict, candidate: dict) -> bool:
 def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
     """Would this upgrade still leave three distinguishable roles?
 
-    Surplus is worth spending, but not on collapsing the board: three cards naming one model
-    tell you nothing, and an Opus running a file rename is money and wall-clock time spent
-    where neither buys anything. So a role may not climb onto another role's model, and the
+    Three cards naming one model tell you nothing, and an Opus running a file rename is money
+    and wall-clock time spent where neither buys anything. So a role may not take another
+    role's model, and the
     ranking architect >= worker >= scout has to survive the step — on score, and on price
     per task: a scout that costs more than the worker for less quality is a worse worker, not
     a better scout. (Filtering loop roles by patience made that reachable: the quickest
@@ -324,117 +332,6 @@ def _keeps_roles_apart(state: dict, role: str, candidate: dict) -> bool:
     return True
 
 
-STOP_REASONS = {
-    "target": "the plan reached its target share of the tier",
-    "speed": "every better model takes longer per task than this patience setting allows",
-    "roles": "every upgrade left would collapse two roles onto one model, and the scout stays at "
-    "the cheapest model that is good enough on purpose",
-    "cap": "the next step up would pass the safety margin",
-    "board": "nothing better exists on the board, and the scout stays at the cheapest model that "
-    "is good enough on purpose",
-}
-
-
-def _why_stopped(state: dict, credit_usd: float, spent: float, target: float, cap: float) -> str | None:
-    """Why the plan stopped short of the target — a low number needs its reason beside it.
-
-    An unspent tier is either a finding or a fault, and the difference is the reason. Left
-    unexplained it reads as a broken page, which is how the shrunken board read in September.
-    """
-    if spent >= target:
-        return None
-    blocked_by_speed = blocked_by_roles = blocked_by_cap = False
-    for role, slot in state.items():
-        if role not in SURPLUS_ROLES:
-            continue  # the scout is not bought up, so it cannot be what stopped the walk
-        pick = slot["pick"]
-        if not pick:
-            continue
-        for candidate in slot["full_pool"]:
-            if candidate["score"] <= pick["score"]:
-                continue
-            extra = (
-                credits_for(candidate["cost_uusd"], credit_usd)
-                - credits_for(pick["cost_uusd"], credit_usd)
-            ) * slot["billable_tasks"]
-            if spent + extra > cap:
-                blocked_by_cap = True
-            elif not quick_enough(candidate, slot["ceiling"]):
-                blocked_by_speed = True
-            elif not _keeps_roles_apart(state, role, candidate):
-                blocked_by_roles = True
-    if blocked_by_speed:
-        return "speed"
-    if blocked_by_roles:
-        return "roles"
-    if blocked_by_cap:
-        return "cap"
-    return "board"
-
-
-def _spend_the_tier(state: dict, tier_credits: int, credit_usd: float, drift_trusted: bool) -> list[dict]:
-    """Climb from the economical picks until the tier is properly used.
-
-    Role shares decide the opening position; from there the only ceiling is the tier itself,
-    because a share is an allocation and the allowance is what actually runs out.
-
-    The surplus is spent **in role order** — architect, then worker; never on the scout, whose
-    rule is "cheapest that is good enough" (SCOUT_BAR) — rather than
-    wherever a point is cheapest. Cheapest-point buying put an Opus on the mechanical role
-    while the worker was still on a light model: quality converts into value at the top of
-    the stack, and the scout should only get expensive when there is genuinely nothing else
-    left to do with the money.
-    """
-    if not tier_credits:
-        return []
-    target = tier_credits * TARGET_UTILISATION
-    cap = tier_credits * MAX_UTILISATION
-    steps: list[dict] = []
-
-    def projected() -> float:
-        return sum(
-            credits_for(slot["pick"]["cost_uusd"], credit_usd) * slot["billable_tasks"]
-            for slot in state.values()
-            if slot["pick"]
-        )
-
-    for role in SURPLUS_ROLES:
-        slot = state[role]
-        for _ in range(12):  # the board is small; this is a guard, not a budget
-            spent = projected()
-            if spent >= target or not slot["pick"]:
-                break
-            headroom = cap - spent
-            found = _best_upgrade(
-                slot["pick"],
-                slot["surplus_pool"],
-                credit_usd,
-                allowed=lambda candidate, slot=slot, headroom=headroom, role=role: (
-                    _keeps_roles_apart(state, role, candidate)
-                    and (
-                        credits_for(candidate["cost_uusd"], credit_usd)
-                        - credits_for(slot["pick"]["cost_uusd"], credit_usd)
-                    )
-                    * slot["billable_tasks"]
-                    <= headroom
-                ),
-            )
-            if not found:
-                break
-            chosen = found[0]
-            upgraded, _ = _avoid_drift(chosen, slot["surplus_pool"], drift_trusted)
-            previous = slot["pick"]
-            if upgraded["key"] == previous["key"] and upgraded["effort"] == previous["effort"]:
-                break  # the drift veto sent us back where we started
-            slot["pick"] = upgraded
-            steps.append({"role": role, "from": previous["label"], "to": upgraded["label"]})
-    state["_stopped"] = _why_stopped(
-        {k: v for k, v in state.items() if not k.startswith("_")},
-        credit_usd, projected(), target, cap,
-    )
-    return steps
-
-
 def _loop_pool(candidates: list[dict], ceiling: float | None) -> list[dict]:
     """The frontier a loop role climbs: rebuilt without the variants too slow to iterate with.
 
@@ -446,6 +343,36 @@ def _loop_pool(candidates: list[dict], ceiling: float | None) -> list[dict]:
 
 def _quick(candidates: list[dict], ceiling: float | None) -> list[dict]:
     return [c for c in candidates if quick_enough(c, ceiling)]
+
+
+def _subagent(candidates: list[dict], ceiling: float | None, bar: dict | None):
+    """The subagent: the cheapest variant within patience over the agentic bar.
+
+    Returns (pick, under_bar, speed_blocked). Not bound by a budget share: it is what the
+    architect delegates to, so it is priced into throughput rather than into the base day.
+    """
+    scored = [c for c in candidates if agentic_score(c) is not None]
+    quick = _quick(scored, ceiling)
+    over = [c for c in quick if bar and agentic_score(c) >= bar["score"]]
+    pick = _cheapest(over)
+    under_bar = False
+    if pick is None:
+        pick = max(quick, key=lambda c: (agentic_score(c), -c["cost_uusd"]), default=None)
+        under_bar = pick is not None
+    slow = [
+        c
+        for c in scored
+        if not quick_enough(c, ceiling)
+        and bar and agentic_score(c) >= bar["score"]
+        and (pick is None or under_bar or c["cost_uusd"] < pick["cost_uusd"])
+    ]
+    blocked = _cheapest(slow)
+    speed_blocked = (
+        {"label": blocked["label"], "score": agentic_score(blocked), "task_minutes": loop_minutes(blocked)}
+        if blocked
+        else None
+    )
+    return pick, under_bar, speed_blocked
 
 
 def _reference(candidates: list[dict], credit_usd: float, patience: dict) -> dict:
@@ -475,7 +402,7 @@ def plan_for_tier(
     patience_id: str = DEFAULT_PATIENCE,
     drift_trusted: bool = True,
 ) -> dict:
-    """Fill the three roles under one tier's monthly credit budget, at one patience setting.
+    """Fill the roles under one tier's credit budget, at one patience setting.
 
     `candidates` must all carry a cost: a variant nobody has priced cannot be budgeted, so it
     never reaches this function.
@@ -500,12 +427,10 @@ def plan_for_tier(
         if role == "architect":
             pick = _best_affordable(candidates, per_task, credit_usd)
             pool = [c for c in candidates if _fits(c, per_task, credit_usd)]
-            surplus_pool = candidates
         elif role == "worker":
             quick = _loop_pool(candidates, ceiling)
             pick = _walk_ladder(quick, per_task, credit_usd, FAIR_USD_PER_PP)
             pool = [c for c in quick if _fits(c, per_task, credit_usd)]
-            surplus_pool = quick
         else:
             # The cheapest variant over the bar, within patience and the scout's share. When
             # nothing over the bar fits, the best that does — and the card says it is under.
@@ -516,7 +441,6 @@ def plan_for_tier(
                 pool = affordable
                 pick = max(pool, key=lambda c: (c["score"], -c["cost_uusd"]), default=None)
                 under_bar = pick is not None
-            surplus_pool = []
         if pick is not None:
             # The budget decides what is affordable; drift still decides what is sane.
             pick, drift_replaced = _avoid_drift(
@@ -528,9 +452,6 @@ def plan_for_tier(
             "pick": pick,
             "pool": pool,
             "drift_replaced": drift_replaced,
-            # Spending the surplus is bounded by the tier, not by the opening allocation.
-            "surplus_pool": surplus_pool,
-            "full_pool": candidates if role == "architect" else rungs,
             "ceiling": ceiling,
             "share_credits": share_credits,
             "billable_tasks": billable_tasks,
@@ -555,16 +476,11 @@ def plan_for_tier(
         else:
             state[lower]["pick"] = max(fitting, key=lambda c: (c["score"], -c["cost_uusd"]))
 
-    # Phase two: an unused credit buys nothing, so climb until the tier is properly used.
-    upgrades = _spend_the_tier(state, tier["credits"], credit_usd, drift_trusted)
-    stopped_because = state.pop("_stopped", None)
-    upgraded_roles = {step["role"]: step["from"] for step in upgrades}
-
     # What patience cost each loop role, so the card can say it rather than just differ. For
     # the worker: the best model it could otherwise have taken — affordable, and still below the
     # role above it — that takes too long per task. For the scout: a cheaper variant over the
-    # bar that takes too long. Asked after the surplus walk, because before it the answer names
-    # models the role-order rule would have refused anyway.
+    # bar that takes too long. Asked after the role-order step-down, because before it the answer
+    # names models the role-order rule would have refused anyway.
     for role in ("worker", "scout"):
         slot = state[role]
         slot["speed_blocked"] = None
@@ -630,14 +546,7 @@ def plan_for_tier(
         out_of_reach = None
         if role == "architect" and board_best is not None and board_best["key"] != pick["key"]:
             best_price = credits_for(board_best["cost_uusd"], credit_usd)
-            # The ceiling that matters is what the plan could still pay after the other roles
-            # are served — not the opening share, which the surplus walk is allowed to pass.
-            others = sum(
-                credits_for(other["pick"]["cost_uusd"], credit_usd) * other["billable_tasks"]
-                for name, other in state.items()
-                if name != role and other["pick"]
-            )
-            reachable = (tier["credits"] * MAX_UTILISATION - others) / billable_tasks
+            reachable = per_task
             if best_price is not None and best_price > reachable:
                 out_of_reach = {
                     "label": board_best["label"],
@@ -649,10 +558,8 @@ def plan_for_tier(
             "pick": pick,
             "why": _why(
                 role, pick, per_task, per_task_credits, monthly[role], drift_replaced,
-                upgraded_roles.get(role), slot["speed_blocked"], slot["ceiling"],
-                bar, under_bar,
+                slot["speed_blocked"], slot["ceiling"], bar, under_bar,
             ),
-            "upgraded_from": upgraded_roles.get(role),
             "drift_replaced": drift_replaced["label"] if drift_replaced else None,
             "speed_blocked": slot["speed_blocked"],
             "ceiling_minutes": slot["ceiling"],
@@ -676,6 +583,46 @@ def plan_for_tier(
         if low and high and low["key"] == high["key"] and low["effort"] == high["effort"]:
             roles[lower]["same_as"] = upper
 
+    # The subagent sits outside the base day: it is what the spare allowance is spent on.
+    sub_ceiling = patience.get("worker")
+    sub_bar = subagent_bar(candidates)
+    sub_pick, sub_under, sub_blocked = _subagent(candidates, sub_ceiling, sub_bar)
+    if sub_pick is None:
+        roles["subagent"] = {
+            "pick": None,
+            "why": "No model on the board has been run on both agentic evaluations.",
+        }
+    else:
+        sub_credits = credits_for(sub_pick["cost_uusd"], credit_usd)
+        roles["subagent"] = {
+            "pick": sub_pick,
+            "agentic_score": agentic_score(sub_pick),
+            "why": _why(
+                "subagent", sub_pick, sub_credits, sub_credits, 0, None,
+                sub_blocked, sub_ceiling, sub_bar, sub_under,
+            ),
+            "drift_replaced": None,
+            "speed_blocked": sub_blocked,
+            "ceiling_minutes": sub_ceiling,
+            "out_of_reach": None,
+            "per_task_credits": round(sub_credits, 1),
+            "bar": sub_bar,
+            "under_bar": sub_under,
+        }
+
+    # Throughput: the day's allowance, what the base day takes of it, and what the rest buys
+    # if spent on one role alone. That is the tier's real answer — more runs, not a reserve.
+    day_credits = tier["credits"] / WORKING_DAYS if WORKING_DAYS else 0.0
+    base_day = total_credits / WORKING_DAYS if WORKING_DAYS else 0.0
+    spare_day = max(day_credits - base_day, 0.0)
+    extra_per_day = {}
+    for role in ("worker", "subagent", "architect"):
+        price = roles.get(role, {}).get("per_task_credits")
+        if price:
+            extra_per_day[role] = int(spare_day / (price * OVERHEAD))
+    for role, extra in extra_per_day.items():
+        roles[role]["extra_per_day"] = extra
+
     # What the merit-only shortlist would cost here — the number that says whether the tier,
     # and not the benchmark, is the thing deciding your models.
     reference_credits = 0.0
@@ -696,8 +643,10 @@ def plan_for_tier(
         "reference_credits": round(reference_credits),
         "reference_used_pct": round(100 * reference_credits / tier["credits"], 1) if tier["credits"] else None,
         "reference_fits": reference_credits <= tier["credits"],
-        "stopped_because": stopped_because,
-        "stopped_note": STOP_REASONS.get(stopped_because) if stopped_because else None,
+        "day_credits": round(day_credits),
+        "base_day_credits": round(base_day),
+        "spare_day_credits": round(spare_day),
+        "extra_per_day": extra_per_day,
     }
 
 
@@ -732,8 +681,7 @@ def assumptions(credit_usd: float) -> dict:
         "fair_usd_per_pp": FAIR_USD_PER_PP,
         "bargain_usd_per_pp": BARGAIN_USD_PER_PP,
         "scout_bar": SCOUT_BAR,
+        "subagent_bar": SUBAGENT_BAR,
         "patience": PATIENCE,
         "default_patience": DEFAULT_PATIENCE,
-        "target_utilisation": TARGET_UTILISATION,
-        "max_utilisation": MAX_UTILISATION,
     }

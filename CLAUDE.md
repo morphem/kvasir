@@ -138,14 +138,24 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   the width for cost, 30% for time) and the attractive quadrant becomes a sliver. Ordering is never
   changed, and the subtitle says the halves are scaled apart. Points estimated from a floor are
   drawn hollow and kept off the Pareto line.
-- **An allowance is spent, not hoarded — but never silently.** Unused credits pool back to the
-  billing entity, so the plan buys up to `TARGET_UTILISATION` and stops at `MAX_UTILISATION`.
-  Surplus goes in role order (architect, then worker — never the scout); a role may not climb onto another role's exact
-  variant, and a lower role may not score more *or cost more per task* than the role above it (at
-  Heavy/Fast the quick frontier once put Opus 5 · Medium on the scout at 219 credits under a 182-credit
-  worker). One model at three efforts is allowed — on the September data Opus 5.5 leads at every
-  price from $0.55 up, and effort is the dial between the roles. When the plan stops short it records `stopped_because`: an unspent tier is either a
-  finding or a fault, and the difference is the reason printed next to it.
+- **A tier is a daily allowance to use up, and the spare is throughput, not quality.** Owner's
+  call on 2026-11-19: 200K over 20 working days is 10K a day, and more agent runs are more work
+  done. The picks are sized on a *base day* (`TASKS_PER_DAY` in `ROLE_MIX`, split by
+  `BUDGET_SHARES`) — the smallest day worth planning for, not a forecast. What the day's allowance
+  buys past it is reported per role as `extra_per_day` (more worker tasks, subagent runs, or
+  plans). This replaced a surplus walk that bought dearer models up to 80–90% of the tier: under a
+  patience ceiling money cannot buy a better loop model, only more of them, and the walk left
+  Power at 7% used. A lower role may not score more *or cost more per task* than the role above
+  it (at Heavy/Fast the quick frontier once put Opus 5 · Medium on the scout at 219 credits under
+  a 182-credit worker). One model at three efforts is allowed — effort is the dial between the
+  roles.
+- **The subagent is chosen on the agentic evaluations, not the Intelligence Index.** It is what
+  the architect delegates to and does not watch. `agentic_score` is the mean of AutomationBench-AA
+  (`automation_bench`, multi-step work across tools and APIs) and Terminal-Bench 4.0; the pick is
+  the cheapest variant within the worker's patience at `SUBAGENT_BAR` (75%) of the agentic leader
+  — the scout's rule on a different axis, set with the role, not tuned. A variant without both
+  scores cannot take the seat; a board without them says so. Both run in AA's own harness, and
+  cost and time per task are still the Intelligence Index runs' — the method panel says so.
 - **The scout is the cheapest that is good enough, not the best the tier buys.** `SCOUT_BAR`
   (75% of the leader's score, owner's call on 2026-10-09) within patience and the scout's share.
   A share of the leader, never a fixed score: the index re-bases between versions and the market
@@ -210,7 +220,7 @@ docker build -t kvasir . && docker run -p 8688:8688 -v $PWD/data:/data kvasir
 | `kvasir/db.py` | The archive: snapshots, observations, run log, drift series. Content-hash dedup. |
 | `kvasir/collect.py` · `scheduler.py` | Poll, archive, log; one loop that asks each source "are you due?" from the database, so a restart never loses the schedule. |
 | `kvasir/recommend.py` | The board: joins the three sources, availability, the value ladder, the gaps between roles, the drift-freshness check, and the archived decision. |
-| `kvasir/budget.py` | The roles: one plan per tier × patience — shares, ladder walks, drift veto, patience, surplus walk, stop reasons. Every constant is echoed into the API response. |
+| `kvasir/budget.py` | The roles: one plan per tier × patience — shares, ladder walks, drift veto, patience, subagent, throughput, stop reasons. Every constant is echoed into the API response. |
 | `kvasir/catalog.py` | The task list and the three roles — English copy, see the language note above. |
 | `kvasir/api.py` | One payload (`/api/view`) for the whole page, plus `/api/history` and `/api/drift` over the archive, and `/api/changelog`. |
 | `kvasir/changelog.py` | What changed, release by release, in the page's words — and the app's version. |
