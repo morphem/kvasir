@@ -88,7 +88,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.wrap { max-width: 1180px; margin: 0 auto; padding: 0 1.25rem 5rem; }
+/* Wide enough for the full models table (eleven columns) without a sideways scroll on a big
+   screen; prose keeps its own measure in ch, so reading lines do not grow with it. Was 1180px,
+   which the table outgrew. */
+.wrap { max-width: 1560px; margin: 0 auto; padding: 0 1.25rem 5rem; }
 
 /* ---- type ---- */
 h1, h2, h3 { letter-spacing: -0.035em; font-weight: 700; margin: 0; }
@@ -279,6 +282,7 @@ td.num, td .num { font-family: var(--mono); font-variant-numeric: tabular-nums; 
 }
 .tier-chip.violet { background: color-mix(in srgb, var(--violet) 16%, transparent); color: var(--violet); }
 .tier-chip.cyan { background: color-mix(in srgb, var(--cyan) 14%, transparent); color: var(--cyan); }
+.tier-chip.sky { background: color-mix(in srgb, var(--sky) 14%, transparent); color: var(--sky); }
 .tier-chip.dim { background: color-mix(in srgb, var(--dim) 14%, transparent); color: var(--dim); }
 .pick-cell { font-weight: 600; }
 .pick-cell em { font-style: normal; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-left: 0.4rem; }
@@ -670,7 +674,10 @@ footer a:hover { color: var(--text); }
 .tick.limit em { color: var(--text); opacity: 1; }
 
 /* ---- scatter hover ---- */
-.scatter-wrap { position: relative; }
+/* The chart keeps its shape, so on a wide page it would outgrow the screen: its box is capped
+   at the width that fits 78% of the viewport's height. The box, not the SVG, so the tooltip,
+   placed inside the box, still lands on its dot. */
+.scatter-wrap { position: relative; max-width: calc(78vh * 1000 / 520); margin-inline: auto; }
 .tip {
   position: absolute; z-index: 5; pointer-events: none;
   transform: translate(14px, -50%);

@@ -44,7 +44,7 @@ TIERS = [
             "back. Chosen on agentic evaluations — multi-step work across tools and a terminal — "
             "not on the Intelligence Index. The tier's spare credits are mostly its runs."
         ),
-        "accent": "cyan",
+        "accent": "sky",
     },
 ]
 

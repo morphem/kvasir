@@ -17,6 +17,18 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.15",
+        "date": "2026-11-19",
+        "title": "Room for the whole table",
+        "items": [
+            {
+                "text": "The page is wider on a large screen, so All models fits without scrolling "
+                "sideways. The map keeps to the height of your screen.",
+                "where": {"panel": "models"},
+            },
+        ],
+    },
+    {
         "version": "2.14",
         "date": "2026-11-19",
         "title": "The subagent stands apart, and the cards line up",
