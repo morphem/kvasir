@@ -17,6 +17,28 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.14",
+        "date": "2026-11-19",
+        "title": "The subagent stands apart, and the cards line up",
+        "items": [
+            {
+                "text": "The subagent has its own colour and a dashed edge, and each card says how the "
+                "role is used: the architect and the worker are interactive — you start them and "
+                "watch — the subagent is delegated.",
+            },
+            {
+                "text": "The three cards share their rows, so the time per task, the numbers and the "
+                "property sheet sit on one line across all three. On the cards, Agentic now means "
+                "only the subagent's score; its two evaluations are listed as Terminal and Automation.",
+            },
+            {
+                "text": "A new chart on the map, Agentic: the subagent's score against cost per task, "
+                "so you can see where its pick sits.",
+                "where": {"panel": "map", "map": "agentic"},
+            },
+        ],
+    },
+    {
         "version": "2.13",
         "date": "2026-11-19",
         "title": "Three roles, and a shorter page",
@@ -455,4 +477,4 @@ VERSION = CHANGELOG[0]["version"]
 # The page's panel ids and map ids, which a "show me" button may open. Kept here so a test can
 # hold every entry to them; the page itself defines the same ids in web/app.js.
 PANELS = {"map", "budget", "value", "models", "drift", "method"}
-MAPS = {"cost", "time", "tokens"}
+MAPS = {"cost", "time", "agentic", "tokens"}

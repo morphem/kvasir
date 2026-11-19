@@ -457,7 +457,7 @@ function clock(role, pick, ceiling, animate) {
   const duration = Math.round(250 + 1100 * clockX(minutes));
   const limit =
     role === "architect"
-      ? "a task — planning runs once, so it is not on the clock"
+      ? "a task — no limit: planned once"
       : ceiling === null || ceiling === undefined
       ? "a task — no limit set"
       : `a task — limit ${ceiling} min`;
@@ -507,7 +507,7 @@ function runCounters(root, animate) {
    the three picks once per row. */
 function useFor(view, roleId) {
   const tasks = (view.tasks || []).filter((task) => task.tier === roleId).map((task) => task.label);
-  return tasks.length ? `<p class="use-for"><b>Use it for</b> ${escapeHtml(tasks.join(" · "))}</p>` : "";
+  return `<p class="use-for">${tasks.length ? `<b>Use it for</b> ${escapeHtml(tasks.join(" · "))}` : ""}</p>`;
 }
 
 function renderVerdicts(view, animate) {
@@ -593,7 +593,9 @@ function renderVerdicts(view, animate) {
     box.append(
       tag(`<article class="card ${role.id}" style="view-transition-name:card-${role.id}">
         <div class="role-band">
-          <span class="role-name">${escapeHtml(role.name)}</span>
+          <span class="role-name">${escapeHtml(role.name)}<span class="role-mode">${
+            role.id === "subagent" ? "delegated" : "interactive"
+          }</span></span>
           <span class="role-line">${escapeHtml(role.role)}</span>
         </div>
         <div class="pick-name">${escapeHtml(pick.label.split(" · ")[0])}${effort}</div>
@@ -612,9 +614,11 @@ function renderVerdicts(view, animate) {
           }
         </div>
         ${useFor(view, role.id)}
-        <p class="why">${escapeHtml(slot.why || "")}</p>
-        ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
-        ${asides.map((aside) => `<p class="why aside">${escapeHtml(aside)}</p>`).join("")}
+        <div class="card-text">
+          <p class="why">${escapeHtml(slot.why || "")}</p>
+          ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
+          ${asides.map((aside) => `<p class="why aside">${escapeHtml(aside)}</p>`).join("")}
+        </div>
         ${propertyRows(pick, view)}
       </article>`)
     );
@@ -733,14 +737,14 @@ function propertyRows(pick, view) {
       ? ["first answer", `${secs(speed.first_answer_seconds)} before it starts`, ""]
       : ["first answer", '<span class="dim">not measured</span>', ""],
     [
-      "coding",
+      "terminal",
       pick.terminal_bench === null || pick.terminal_bench === undefined
         ? '<span class="dim">not run</span>'
         : `${pick.terminal_bench.toFixed(1)}% <span class="dim">Terminal-Bench</span>`,
       "",
     ],
     [
-      "agentic",
+      "automation",
       pick.automation_bench === null || pick.automation_bench === undefined
         ? '<span class="dim">not run</span>'
         : `${pick.automation_bench.toFixed(1)}% <span class="dim">AutomationBench</span>`,
@@ -923,6 +927,23 @@ const MAPS = {
       );
     },
   },
+  agentic: {
+    tab: "Agentic",
+    title: "Agentic evaluations against cost per task",
+    yAxis: "AGENTIC (AUTOMATIONBENCH + TERMINAL-BENCH)",
+    y: (c) => agentic(c),
+    axis: "COST OF ONE INDEX TASK (USD, LOG SCALE)",
+    log: true,
+    x: (c) => (c.cost_usd > 0 ? c.cost_usd : null),
+    ticks: [0.005, 0.01, 0.03, 0.1, 0.3, 1, 3, 10],
+    fmt: (v) => (v < 0.1 ? `$${v.toFixed(3).replace(/0+$/, "")}` : `$${v < 1 ? v.toFixed(2) : v}`),
+    split: () => ({ x: 1, label: "$1 a task" }),
+    corner: "better agent, cheaper",
+    sub: () =>
+      "The subagent's chart: the mean of AutomationBench and Terminal-Bench 4.0 — multi-step work " +
+      "across tools and a terminal — against what one index task costs. Only variants scored on both " +
+      "appear. Each half of the cost axis has its own scale, so $1 sits in the middle.",
+  },
   tokens: {
     tab: "Output tokens per task",
     title: "Intelligence against output tokens per task",
@@ -984,13 +1005,16 @@ function renderMap(view) {
   const H = 520;
   const pad = { l: 62, r: 24, t: 26, b: 58 };
 
+  // The y axis is the Intelligence Index unless the chart names its own (the agentic one).
+  const yOf = map.y || ((c) => c.score);
+  const drawn = (p) => p.x !== null && p.x !== undefined && p.score !== null && p.score !== undefined;
   const board = view.candidates
-    .map((c) => ({ c, id: candidateId(c), x: map.x(c), score: c.score }))
-    .filter((p) => p.x !== null && p.x !== undefined);
+    .map((c) => ({ c, id: candidateId(c), x: map.x(c), score: yOf(c) }))
+    .filter(drawn);
   const market = state.market
     ? (view.market || [])
-        .map((m) => ({ c: m, id: `market|${m.key}`, x: map.x(m), score: m.score, ghost: true }))
-        .filter((p) => p.x !== null && p.x !== undefined)
+        .map((m) => ({ c: m, id: `market|${m.key}`, x: map.x(m), score: yOf(m), ghost: true }))
+        .filter(drawn)
     : [];
   const all = [...board, ...market];
   if (!all.length) {
@@ -1065,7 +1089,7 @@ function renderMap(view) {
     parts.push(`<line x1="${x2}" y1="${pad.t}" x2="${x2}" y2="${H - pad.b}" class="split second"/>`);
     parts.push(`<text x="${x2 + 6}" y="${H - pad.b - 24}" class="split-label">${escapeHtml(split.secondLabel)}</text>`);
   }
-  parts.push(`<text x="${pad.l - 44}" y="${(pad.t + H - pad.b) / 2}" class="axis-label" transform="rotate(-90 ${pad.l - 44} ${(pad.t + H - pad.b) / 2})" text-anchor="middle">INTELLIGENCE INDEX</text>`);
+  parts.push(`<text x="${pad.l - 44}" y="${(pad.t + H - pad.b) / 2}" class="axis-label" transform="rotate(-90 ${pad.l - 44} ${(pad.t + H - pad.b) / 2})" text-anchor="middle">${escapeHtml(map.yAxis || "INTELLIGENCE INDEX")}</text>`);
   parts.push(`<text x="${(pad.l + W - pad.r) / 2}" y="${H - 10}" class="axis-label" text-anchor="middle">${escapeHtml(map.axis)}</text>`);
 
   // Pareto line over the board only — what we can actually start — and only over measured
@@ -1079,9 +1103,9 @@ function renderMap(view) {
     const hue = familyHue(family.key);
     if (!hue) return;
     const path = family.variants
-      .map((v) => ({ v, x: map.x(v) }))
-      .filter((p) => p.x !== null && p.x !== undefined)
-      .map((p) => `${sx(p.x)},${sy(p.v.score)}`);
+      .map((v) => ({ v, x: map.x(v), y: yOf(v) }))
+      .filter((p) => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined)
+      .map((p) => `${sx(p.x)},${sy(p.y)}`);
     if (path.length > 1) parts.push(`<polyline points="${path.join(" ")}" fill="none" style="stroke:${hue}" stroke-width="2" opacity=".85"/>`);
   });
   svg.querySelectorAll(":scope > :not(g.pts)").forEach((el) => el.remove());
@@ -1104,7 +1128,7 @@ function renderMap(view) {
   const onFront = new Set(front.map((p) => p.id));
   const efforts = {};
   view.candidates.forEach((c) => (efforts[c.key] = (efforts[c.key] || 0) + 1));
-  const colour = { architect: "var(--violet)", worker: "var(--cyan)", subagent: "var(--cyan)" };
+  const colour = { architect: "var(--violet)", worker: "var(--cyan)", subagent: "var(--sky)" };
 
   // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
   // not print over each other; a dot without a label still answers to hover.
@@ -1127,12 +1151,26 @@ function renderMap(view) {
       const left = t.anchor === "start" ? x + t.dx : t.anchor === "end" ? x + t.dx - width : x - width / 2;
       const box = { x0: left, x1: left + width, y0: y + t.dy - 12, y1: y + t.dy + 3 };
       if (fits(box)) {
-        placed.push(box);
+        placed.push({ ...box, label: true });
         return t;
       }
     }
-    // A role pick is always named, even over a neighbour: it is the answer the chart is for.
-    if (weight) return x > W - pad.r - width - 12 ? tries[1] : tries[0];
+    // A role pick is always named, even over a neighbour's dot: it is the answer the chart is
+    // for. Never over another label, though — two picks a hair apart printed on each other.
+    if (weight) {
+      for (const t of tries) {
+        const left = t.anchor === "start" ? x + t.dx : t.anchor === "end" ? x + t.dx - width : x - width / 2;
+        const box = { x0: left, x1: left + width, y0: y + t.dy - 12, y1: y + t.dy + 3 };
+        const clear =
+          box.x0 >= pad.l && box.x1 <= W - pad.r && box.y0 >= pad.t &&
+          !placed.some((o) => o.label && box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0);
+        if (clear) {
+          placed.push({ ...box, label: true });
+          return t;
+        }
+      }
+      return x > W - pad.r - width - 12 ? tries[1] : tries[0];
+    }
     return null;
   };
   // Picks claim their label space first.

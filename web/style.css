@@ -1,5 +1,6 @@
 /* BlinkNeuron house style: ink base, one cyan for "this fits", one violet for "this is a
-   gap". Both accents are semantic — never decoration. System fonts only, and the identity
+   gap", and one sky blue for "delegated" — the subagent, the one role nobody watches. Every
+   accent is semantic — never decoration. System fonts only, and the identity
    lives in the tension between very tight display tracking and very loose mono tracking. */
 
 :root {
@@ -13,6 +14,7 @@
   --cyan: #38e1c4;
   --violet: #7c5cff;
   --violet-text: #b9a6ff;
+  --sky: #5aa6ff;
   --amber: #f5b544;
   --text: #e8ecf1;
   --dim: #8b97a8;
@@ -43,6 +45,7 @@
     --cyan: #12b394;
     --violet: #6b48f5;
     --violet-text: #5433e0;
+    --sky: #2563d6;
     --amber: #b7791f;
     --text: #0b0e14;
     --dim: #5a6675;
@@ -62,6 +65,7 @@
   --cyan: #12b394;
   --violet: #6b48f5;
   --violet-text: #5433e0;
+  --sky: #2563d6;
   --amber: #b7791f;
   --text: #0b0e14;
   --dim: #5a6675;
@@ -104,6 +108,7 @@ h3 { font-size: 1rem; }
 .dim { color: var(--dim); }
 .cyan { color: var(--cyan); }
 .violet { color: var(--violet); }
+.sky { color: var(--sky); }
 .amber { color: var(--amber); }
 
 /* ---- header ---- */
@@ -141,20 +146,41 @@ section { margin-top: 3.4rem; }
 .section-head p { color: var(--dim); margin: 0.5rem 0 0; max-width: 70ch; font-size: 0.95rem; }
 
 /* ---- verdict cards ---- */
-.verdicts { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 1.5rem; }
+/* The cards share their row tracks (subgrid): the clock, the numbers and the property sheet
+   sit on one line across all three, however long one card's text runs. Seven tracks — band,
+   name, clock, numbers, "use it for", the card's own text, the property sheet. */
+.verdicts {
+  display: grid; column-gap: 1rem; row-gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); margin-top: 1.5rem;
+}
 .card {
   background: var(--raise);
   border: 1px solid var(--edge);
   border-radius: 14px;
   padding: 1.15rem 1.15rem 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
+  display: grid;
+  grid-row: span 7;
+  grid-template-rows: subgrid;
+  row-gap: 0.55rem;
+  align-content: start;
+  margin-block-end: 1rem;
 }
+.card-text { display: flex; flex-direction: column; gap: 0.55rem; }
 .card { overflow: hidden; }
 .card.architect { border-top: 2px solid var(--violet); --accent: var(--violet); --band: color-mix(in srgb, var(--violet) 13%, transparent); }
 .card.worker { border-top: 2px solid var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 11%, transparent); }
-.card.subagent { border-top: 2px dashed var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 6%, transparent); }
+/* Delegated, not interactive: its own colour, and a dashed edge all round — it runs out of
+   sight. */
+.card.subagent {
+  border: 1px dashed color-mix(in srgb, var(--sky) 55%, transparent); border-top: 2px dashed var(--sky);
+  --accent: var(--sky); --band: color-mix(in srgb, var(--sky) 10%, transparent);
+}
+.role-mode {
+  font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--dim); border: 1px solid var(--edge); border-radius: 999px; padding: 0.08rem 0.45rem;
+  margin-left: 0.6rem; vertical-align: 0.12em; white-space: nowrap;
+}
+.card.subagent .role-mode { color: var(--sky); border-color: color-mix(in srgb, var(--sky) 50%, transparent); border-style: dashed; }
 .use-for { margin: 0; font-size: 0.82rem; color: var(--dim); }
 .use-for b { color: var(--text); font-weight: 600; margin-right: 0.3rem; }
 
@@ -196,6 +222,9 @@ section { margin-top: 3.4rem; }
 }
 .card.architect .pick-effort {
   color: var(--violet-text); background: color-mix(in srgb, var(--violet) 18%, transparent); border-color: color-mix(in srgb, var(--violet) 50%, transparent);
+}
+.card.subagent .pick-effort {
+  color: var(--sky); background: color-mix(in srgb, var(--sky) 14%, transparent); border-color: color-mix(in srgb, var(--sky) 45%, transparent);
 }
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.35rem; }
 .metric { border-top: 1px solid var(--edge); padding-top: 0.4rem; }
@@ -492,7 +521,8 @@ footer a:hover { color: var(--text); }
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 0.34rem 0.9rem;
-  margin: auto 0 0;
+  margin: 0;
+  align-self: start;
   padding-top: 0.9rem;
   border-top: 1px solid var(--edge);
   font-size: 0.82rem;
@@ -622,8 +652,9 @@ footer a:hover { color: var(--text); }
 .clock.untimed .clock-track { background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--dim) 22%, transparent) 0 6px, transparent 6px 11px); }
 .clock-bar {
   position: absolute; inset: 0 auto 0 0; width: var(--to); border-radius: 999px;
-  background: var(--cyan);
+  background: var(--bar, var(--cyan));
 }
+.card.subagent { --bar: var(--sky); }
 .clock-bar.free { background: var(--dim); }
 .clock-bar.run { animation: clock-run var(--dur) cubic-bezier(0.3, 0.1, 0.25, 1) both; }
 @keyframes clock-run { from { width: 0; } to { width: var(--to); } }
@@ -724,7 +755,7 @@ section[data-panel="value"] ~ section[data-panel="value"] { margin-top: 3rem; }
 #scatter g.pt { transition: transform 0.6s cubic-bezier(0.3, 0.1, 0.2, 1); }
 #scatter g.pt circle.hit { cursor: pointer; }
 
-.clock.floor .clock-bar { background: repeating-linear-gradient(90deg, var(--cyan) 0 5px, transparent 5px 8px); }
+.clock.floor .clock-bar { background: repeating-linear-gradient(90deg, var(--bar, var(--cyan)) 0 5px, transparent 5px 8px); }
 .clock.floor .clock-bar.free { background: repeating-linear-gradient(90deg, var(--dim) 0 5px, transparent 5px 8px); }
 
 @media (prefers-reduced-motion: reduce) {
