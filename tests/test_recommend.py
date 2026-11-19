@@ -67,12 +67,8 @@ def test_roles_are_ordered_by_cost_and_quality():
     for by_patience in view["plans"].values():
         for plan in by_patience.values():
             roles = {role: slot["pick"] for role, slot in plan["roles"].items()}
-            assert roles["architect"]["score"] >= roles["worker"]["score"] >= roles["scout"]["score"]
-            assert (
-                roles["architect"]["cost_uusd"]
-                >= roles["worker"]["cost_uusd"]
-                >= roles["scout"]["cost_uusd"]
-            )
+            assert roles["architect"]["score"] >= roles["worker"]["score"]
+            assert roles["architect"]["cost_uusd"] >= roles["worker"]["cost_uusd"]
 
 
 def test_the_new_releases_reach_the_board():
@@ -135,19 +131,18 @@ def test_a_single_model_is_named_once():
     )
     roles = view["plans"]["heavy"]["balanced"]["roles"]
     assert roles["worker"]["same_as"] == "architect"
-    assert roles["scout"]["same_as"] == "worker"
 
 
 def test_tasks_carry_their_role():
     view = build()
     assert len(view["tasks"]) >= 10
     for task in view["tasks"]:
-        assert task["tier"] in {"architect", "worker", "scout", "subagent"}
+        assert task["tier"] in {"architect", "worker", "subagent"}
         assert task["tier_name"]
 
 
 def test_patience_decides_the_loop_roles_only():
-    """A model that takes ten minutes a task loses the scout's seat at Fast, never the architect's."""
+    """A model that takes ten minutes a task loses the worker's seat at Fast, never the architect's."""
     rows = [
         aa_row("thinker", "max", 60.0, 300_000, minutes=10),
         aa_row("quick", "low", 40.0, 100_000, minutes=1),
@@ -155,9 +150,9 @@ def test_patience_decides_the_loop_roles_only():
     view = recommend.build(rows, [], sold("thinker", "quick"), Settings(), [])
     fast = picks(view, "basic", "fast")
     anything = picks(view, "basic", "any")
-    assert fast["scout"]["key"] == "quick"
+    assert fast["worker"]["key"] == "quick"
     assert fast["architect"]["key"] == "thinker"
-    assert anything["scout"]["key"] == "thinker"
+    assert anything["worker"]["key"] == "thinker"
 
 
 def seed_archive(path: str) -> None:

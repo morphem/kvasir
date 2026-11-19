@@ -1,6 +1,6 @@
 """The task catalogue — the page's actual answer to "which agent do I start?".
 
-Four roles, and a list of the jobs that actually land on this desk mapped onto them. The
+Three roles, and a list of the jobs that actually land on this desk mapped onto them. The
 tiers are roles, not model names: which model fills a role is decided from live data in
 recommend.py and changes as the benchmarks move.
 
@@ -30,20 +30,10 @@ TIERS = [
         "description": (
             "The default agent. Takes a defined task or a question — including one from the "
             "business — and answers it. Faster than the architect and less inventive: strongest "
-            "where documentation exists and a pattern can be followed."
+            "where documentation exists and a pattern can be followed. For mechanical work, the "
+            "same model at a lower effort."
         ),
         "accent": "cyan",
-    },
-    {
-        "id": "scout",
-        "name": "Scout",
-        "role": "Cheap, simple, repetitive",
-        "description": (
-            "The cheapest agent that is good enough — at least three quarters of the leader's "
-            "score — for mechanical work: moving files, renaming things, calling a tool another "
-            "agent prepared, checking something quickly."
-        ),
-        "accent": "dim",
     },
     {
         "id": "subagent",
@@ -52,47 +42,31 @@ TIERS = [
         "description": (
             "The agent the architect delegates to and does not watch: search, run, fix, report "
             "back. Chosen on agentic evaluations — multi-step work across tools and a terminal — "
-            "not on the Intelligence Index: the cheapest within patience that reaches three "
-            "quarters of the agentic leader. The tier's spare credits are mostly its runs."
+            "not on the Intelligence Index. The tier's spare credits are mostly its runs."
         ),
         "accent": "cyan",
     },
 ]
 
+# What each role is for, printed on its card. Short on purpose: the card is read at a glance.
+# The scout's work (renames, commit messages, "where is this") moved to the worker on
+# 2026-11-19, at the quicker effort its card names.
 TASKS = [
-    {"id": "plan", "tier": "architect", "label": "Plan a large task: architecture, scope, breakdown",
-     "note": "Where a mistake costs the most — a bad plan wastes every hour spent downstream of it."},
-    {"id": "big-refactor", "tier": "architect", "label": "Refactor across many files and modules",
-     "note": "The whole context has to be held at once; a worker loses the thread between dependencies."},
-    {"id": "hard-bug", "tier": "architect", "label": "Hard bug with no obvious location",
-     "note": "Cross-domain. The model has to connect traces from layers nobody pointed it at."},
-    {"id": "greenfield", "tier": "architect", "label": "New module from scratch, no pattern in the repo",
-     "note": "Nothing to copy — this needs invention rather than recall."},
+    {"id": "plan", "tier": "architect", "label": "planning: architecture, scope, breakdown"},
+    {"id": "big-refactor", "tier": "architect", "label": "refactors across many modules"},
+    {"id": "hard-bug", "tier": "architect", "label": "hard bugs with no obvious location"},
+    {"id": "greenfield", "tier": "architect", "label": "new modules with no pattern to copy"},
 
-    {"id": "feature", "tier": "worker", "label": "Feature that follows an existing pattern",
-     "note": "There is something to lean on, so the worker reproduces it faster and cheaper."},
-    {"id": "business-q", "tier": "worker", "label": "Question from the business: how does this work, can we do it",
-     "note": "Read the code and the docs, then answer in two sentences."},
-    {"id": "review", "tier": "worker", "label": "Code review, finding bugs in a pull request",
-     "note": "Bounded scope and a checkable result — nothing here earns a premium."},
-    {"id": "tests", "tier": "worker", "label": "Tests for code that already exists",
-     "note": "Recall work with an unambiguous success criterion."},
-    {"id": "integration", "tier": "worker", "label": "Integrate an API from its documentation",
-     "note": "The documentation is in the context window; this is the worker's game."},
+    {"id": "feature", "tier": "worker", "label": "features that follow a pattern"},
+    {"id": "business-q", "tier": "worker", "label": "questions from the business"},
+    {"id": "review", "tier": "worker", "label": "code review"},
+    {"id": "tests", "tier": "worker", "label": "tests for existing code"},
+    {"id": "integration", "tier": "worker", "label": "API integration from docs"},
+    {"id": "chores", "tier": "worker", "label": "renames, commit messages, “where is this” (quick effort)"},
 
-    {"id": "mech-refactor", "tier": "scout", "label": "Mechanical refactor: renames, moving files",
-     "note": "Zero creativity, many edits. Pay for tokens, not for judgement."},
-    {"id": "tool-call", "tier": "scout", "label": "Call a tool another agent prepared",
-     "note": "The tool already does the thinking — the model only has to hit the arguments."},
-    {"id": "chores", "tier": "scout", "label": "Commit message, changelog, pull request description",
-     "note": "Short, formulaic, and verified at a glance."},
-    {"id": "locate", "tier": "scout", "label": "Quick “where is this in the code”",
-     "note": "Searching, not reasoning."},
-
-    {"id": "delegated-fix", "tier": "subagent", "label": "Sub-task from the plan: change, run the tests, report",
-     "note": "Nobody watches it run, so it is chosen on how agents finish multi-step work, not on recall."},
-    {"id": "fan-out", "tier": "subagent", "label": "Many small investigations in parallel",
-     "note": "Where a large tier's spare credits go: more runs at once, not a dearer model."},
+    {"id": "delegated-fix", "tier": "subagent", "label": "sub-tasks from the plan: change, test, report"},
+    {"id": "fan-out", "tier": "subagent", "label": "investigations in parallel"},
+    {"id": "tool-call", "tier": "subagent", "label": "calling tools another agent prepared"},
 ]
 
 TIER_BY_ID = {tier["id"]: tier for tier in TIERS}

@@ -14,9 +14,8 @@ const PANEL_STORAGE_KEY = "kvasir.panel";
    of knowledge, and the tab most visitors should land on. */
 const PANELS = [
   { id: "map", label: "Where to use what" },
-  { id: "tasks", label: "Task → agent" },
-  { id: "budget", label: "Month on this tier" },
-  { id: "value", label: "Is the upgrade worth it" },
+  { id: "budget", label: "A day on this tier" },
+  { id: "value", label: "Value ladder" },
   { id: "models", label: "All models" },
   { id: "drift", label: "Drift" },
   { id: "method", label: "Method" },
@@ -383,8 +382,8 @@ function renderTierTabs(view) {
 }
 
 /* Patience is the second switch, and it reads like the first: a name, and underneath it the
-   numbers it stands for — the longest wait before the first answer the scout and the worker
-   may put you through. The architect is never on this clock. */
+   number it stands for — the longest one task may take the worker and the subagent. The
+   architect is never on this clock. */
 const ceilingText = (minutes) => (minutes === null || minutes === undefined ? "any" : `${minutes} min`);
 
 function renderPatienceTabs(view) {
@@ -396,9 +395,7 @@ function renderPatienceTabs(view) {
     checked: level.id === state.patience,
     html: `<b>${escapeHtml(level.label)}</b>
       <span>${escapeHtml(
-        level.scout === null && level.worker === null
-          ? "no limit on waiting"
-          : `scout ${ceilingText(level.scout)} · worker ${ceilingText(level.worker)}`
+        level.worker === null ? "no limit on waiting" : `${ceilingText(level.worker)} a task`
       )}</span>`,
   }));
   radioGroup(box, "patience", options, (id) => {
@@ -434,7 +431,7 @@ const clockX = (minutes) => Math.min(1, Math.sqrt(Math.max(0, minutes) / CLOCK_M
 function clockTicks() {
   const values = new Set();
   ((state.view && state.view.patience) || []).forEach((p) => {
-    [p.scout, p.worker].forEach((v) => v !== null && v !== undefined && values.add(v));
+    if (p.worker) [p.worker / 2, p.worker].forEach((v) => values.add(v));
   });
   return [...values].sort((a, b) => a - b);
 }
@@ -506,6 +503,13 @@ function runCounters(root, animate) {
   });
 }
 
+/* What a role is for, on its card: the task list used to be a tab of its own that repeated
+   the three picks once per row. */
+function useFor(view, roleId) {
+  const tasks = (view.tasks || []).filter((task) => task.tier === roleId).map((task) => task.label);
+  return tasks.length ? `<p class="use-for"><b>Use it for</b> ${escapeHtml(tasks.join(" · "))}</p>` : "";
+}
+
 function renderVerdicts(view, animate) {
   // Bars are only readable against a common scale, and the board is the honest one: the
   // fastest model on it sets full width.
@@ -545,6 +549,27 @@ function renderVerdicts(view, animate) {
           `${credits(reach.ceiling_credits)}-credit ceiling for planning.`
       );
     }
+    if (role.id === "architect" && current && current.gaps && current.gaps.length) {
+      // The one gap left between roles, said where the decision to escalate is made.
+      const gap = current.gaps[0];
+      const verdict =
+        gap.verdict === "steep"
+          ? "escalate only when the worker fails"
+          : gap.verdict === "bargain"
+          ? "cheap enough to start here"
+          : "a fair trade";
+      asides.push(
+        `Over the worker: +${gap.delta_score_pp} points for ×${gap.cost_factor} the price ` +
+          `(${usd(gap.usd_per_pp)} a point) — ${verdict}.`
+      );
+    }
+    if (role.id === "worker" && slot.quick) {
+      const quick = slot.quick;
+      asides.push(
+        `Renames, commit messages, “where is this”: ${quick.effort_label} — ` +
+          `${minutesText(quick.task_minutes)}, ${credits(quick.per_task_credits)} credits a task.`
+      );
+    }
     if (role.id === "subagent" && slot.under_bar) {
       notes.push(
         `Under the agentic bar: nothing at ${idx(slot.bar.score)} or more finishes within this patience.`
@@ -561,7 +586,7 @@ function renderVerdicts(view, animate) {
       const siblings = Object.entries(roles)
         .filter(([other, data]) => other !== role.id && data.pick && data.pick.key === pick.key)
         .map(([other]) => other);
-      if (siblings.length && role.id !== "architect") {
+      if (siblings.length && role.id === "worker") {
         asides.push(`Same model as the ${siblings.join(" and the ")}, at a different effort.`);
       }
     }
@@ -586,6 +611,7 @@ function renderVerdicts(view, animate) {
               : `<div class="metric"><b data-count="card-${role.id}-month" data-value="${slot.month_credits ?? ""}"></b><span>base credits / mo</span></div>`
           }
         </div>
+        ${useFor(view, role.id)}
         <p class="why">${escapeHtml(slot.why || "")}</p>
         ${notes.map((note) => `<p class="note">${escapeHtml(note)}</p>`).join("")}
         ${asides.map((aside) => `<p class="why aside">${escapeHtml(aside)}</p>`).join("")}
@@ -601,7 +627,7 @@ function renderVerdicts(view, animate) {
   const tier = plan();
   const level = (view.patience || []).find((p) => p.id === state.patience);
   $("#verdict-sub").textContent = tier
-    ? `Filled inside the ${tier.name} tier's monthly budget at ${
+    ? `Sized inside the ${tier.name} tier at ${
         level ? level.label.toLowerCase() : state.patience
       } patience: ${credits(tier.day_credits)} credits a day, ${credits(
         tier.spare_day_credits
@@ -816,75 +842,16 @@ function renderBudget(view, animate) {
     `A tier is ${assumptions.working_days} working days of credits, to be used up — credits left at the ` +
     `end of the month pool back and buy nothing. The models are sized on a base day of ` +
     `${assumptions.tasks_per_day} agent tasks (${num(assumptions.tasks_by_role.architect / assumptions.working_days)} planning, ` +
-    `${num(assumptions.tasks_by_role.worker / assumptions.working_days)} ordinary, ` +
-    `${num(assumptions.tasks_by_role.scout / assumptions.working_days)} mechanical), ×${assumptions.overhead} for chat and ` +
+    `${num(assumptions.tasks_by_role.worker / assumptions.working_days)} ordinary), ×${assumptions.overhead} for chat and ` +
     `retries, split ${Math.round(assumptions.budget_shares.architect * 100)}/` +
-    `${Math.round(assumptions.budget_shares.worker * 100)}/` +
-    `${Math.round(assumptions.budget_shares.scout * 100)} between the roles — the smallest day worth ` +
+    `${Math.round(assumptions.budget_shares.worker * 100)} between the architect and the worker — the smallest day worth ` +
     `planning for, not a forecast. What the day buys past it is shown per role, as if spent on that ` +
     `role alone, ×${assumptions.overhead} included; past the patience limit money buys more runs in ` +
     `parallel, not a better loop model. A task is one Artificial Analysis Intelligence Index task, ` +
-    `averaged over its evaluations. The worker, the scout and the subagent are the roles you iterate ` +
-    `with, so at this patience a variant that takes longer than ` +
-    `${ceilingText((assumptions.patience[state.patience] || {}).worker)} (worker, subagent) or ` +
-    `${ceilingText((assumptions.patience[state.patience] || {}).scout)} (scout) per task cannot take ` +
-    `one — the architect is exempt, because a plan is made once and on purpose. ` +
+    `averaged over its evaluations. The worker and the subagent are the loops, so at this patience a ` +
+    `variant that takes longer than ${ceilingText((assumptions.patience[state.patience] || {}).worker)} ` +
+    `per task cannot take either — the architect is exempt, because a plan is made once and on purpose. ` +
     `Code completions are not billed in credits, so they are not counted here.`;
-}
-
-/* ---------- gap tracks: the fit-axis device ---------- */
-
-function renderGaps(gaps) {
-  const box = $("#gaps");
-  box.innerHTML = "";
-  gaps.forEach((gap) => {
-    const colour = gap.verdict === "bargain" ? "var(--cyan)" : gap.verdict === "steep" ? "var(--violet)" : "var(--dim)";
-    const message =
-      gap.verdict === "bargain"
-        ? "The surcharge is token next to the quality gained — take the dearer one, even for simple work."
-        : gap.verdict === "steep"
-        ? "You pay several times more for a fraction of the quality — escalate only when the cheaper one actually fails."
-        : "A fair trade: the surcharge roughly matches the quality gained.";
-    box.append(
-      tag(`<div class="gap">
-        <h3>${escapeHtml(gap.from)} → ${escapeHtml(gap.to)}</h3>
-        <svg viewBox="0 0 400 74" aria-hidden="true">
-          <line x1="24" y1="30" x2="376" y2="30" style="stroke:var(--edge)" stroke-width="2"/>
-          <line x1="24" y1="30" x2="376" y2="30" style="stroke:${colour}" stroke-width="3" stroke-dasharray="4 5"/>
-          <circle cx="24" cy="30" r="7" style="fill:var(--raise);stroke:${colour}" stroke-width="2.5"/>
-          <circle cx="376" cy="30" r="7" style="fill:${colour}"/>
-          <text x="24" y="58" style="fill:var(--dim)" font-size="12" font-family="ui-monospace,monospace">${escapeHtml(gap.from_label)}</text>
-          <text x="376" y="58" style="fill:var(--text)" font-size="12" font-family="ui-monospace,monospace" text-anchor="end">${escapeHtml(gap.to_label)}</text>
-          <text x="200" y="18" style="fill:${colour}" font-size="13" font-family="ui-monospace,monospace" text-anchor="middle">+${gap.delta_score_pp} pts · +${usd(gap.delta_cost_usd)} · ×${gap.cost_factor}</text>
-        </svg>
-        <p class="verdict-line"><b class="mono" style="color:${colour}">${usd(gap.usd_per_pp)} per point</b> — ${escapeHtml(message)}</p>
-      </div>`)
-    );
-  });
-}
-
-/* ---------- task table ---------- */
-
-function renderTasks(view) {
-  const body = $("#tasks tbody");
-  const current = plan();
-  body.innerHTML = "";
-  view.tasks.forEach((task) => {
-    const slot = current && current.roles ? current.roles[task.tier] : null;
-    const pick = slot && slot.pick;
-    const [name, effort] = (pick ? pick.label : "—").split(" · ");
-    body.append(
-      tag(`<tr>
-        <td>${escapeHtml(task.label)}<br><span class="dim" style="font-size:.82rem">${escapeHtml(task.note)}</span></td>
-        <td><span class="tier-chip ${task.accent}">${escapeHtml(task.tier_name)}</span></td>
-        <td class="pick-cell">${escapeHtml(name)}${effort ? `<em>${escapeHtml(effort)}</em>` : ""}
-            ${pick && !pick.copilot ? '<br><span class="dim" style="font-size:.75rem">not in Copilot</span>' : ""}</td>
-        <td class="num">${pick ? idx(pick.score) : "—"}</td>
-        <td class="num">${pick ? minutesText(loopMinutes(pick)) : "—"}</td>
-        <td class="num">${slot ? credits(slot.per_task_credits) : "—"}</td>
-      </tr>`)
-    );
-  });
 }
 
 /* ---------- the map: intelligence against cost, time or tokens ----------
@@ -938,7 +905,7 @@ const MAPS = {
     split: (domain) => {
       const level = patienceLevel();
       if (level && level.worker !== null) {
-        return { x: level.worker, label: `worker ≤ ${level.worker} min`, second: level.scout, secondLabel: `scout ≤ ${level.scout} min` };
+        return { x: level.worker, label: `worker ≤ ${level.worker} min` };
       }
       const middle = Math.round((domain[0] + domain[1]) / 2);
       return { x: middle, label: `${middle} min` };
@@ -947,10 +914,11 @@ const MAPS = {
     sub: () => {
       const level = patienceLevel();
       return (
-        "How long one task takes — decode time, reasoning included. You iterate with the worker and " +
-        "the scout, so this is the length of every loop; the architect plans once and may take its time. " +
+        "How long one task takes — decode time, reasoning included. You iterate with the worker, and " +
+        "the architect waits on the subagent, so this is the length of every loop; the architect plans " +
+        "once and may take its time. " +
         (level && level.worker !== null
-          ? `The split is the worker's limit at ${level.label.toLowerCase()} patience, the dashed line the scout's; each half of the axis has its own scale.`
+          ? `The split is the limit at ${level.label.toLowerCase()} patience; each half of the axis has its own scale.`
           : "No patience limit is set, so the split is the middle of the range.")
       );
     },
@@ -1136,7 +1104,7 @@ function renderMap(view) {
   const onFront = new Set(front.map((p) => p.id));
   const efforts = {};
   view.candidates.forEach((c) => (efforts[c.key] = (efforts[c.key] || 0) + 1));
-  const colour = { architect: "var(--violet)", worker: "var(--cyan)", scout: "var(--dim)", subagent: "var(--cyan)" };
+  const colour = { architect: "var(--violet)", worker: "var(--cyan)", subagent: "var(--cyan)" };
 
   // Labels: role picks always, Pareto points when there is room. Placed greedily so they do
   // not print over each other; a dot without a label still answers to hover.
@@ -1477,9 +1445,9 @@ function renderLadder(view) {
 
 /* ---------- sortable tables ----------
 
-   Two of the four tables on this page are data you scan (drift, all models); the other two
-   carry an order that means something (the task catalogue is grouped by role, the budget breakdown reads
-   architect-worker-scout) and sorting them would destroy the point. So this is opt-in.
+   Two of the three tables on this page are data you scan (drift, all models); the budget
+   breakdown carries an order that means something (architect, worker, subagent) and sorting it
+   would destroy the point. So this is opt-in.
 
    Cells carry `data-sort` with the raw value, because the rendered text is formatted for
    reading — "$0.075", "59–88", "+3.8" — and sorting the formatting gives nonsense. An empty
@@ -1667,6 +1635,7 @@ function renderDrift(drift, history, source) {
         ? ""
         : row.max_7d - row.min_7d;
     const reason = offBoard.get(row.key) || (sold.has(row.key) ? null : "not in Copilot");
+    if (reason && !state.showAll) return;
     const marks = [
       row.stale ? "· not refreshed" : "",
       reason ? `· ${reason}` : "",
@@ -1720,6 +1689,12 @@ function renderWaitFilter() {
   });
 }
 
+const agentic = (c) =>
+  c && c.automation_bench !== null && c.automation_bench !== undefined &&
+  c.terminal_bench !== null && c.terminal_bench !== undefined
+    ? Math.round(((c.automation_bench + c.terminal_bench) / 2) * 10) / 10
+    : null;
+
 function renderModels(view) {
   const body = $("#models tbody");
   if (!body) return;
@@ -1728,7 +1703,9 @@ function renderModels(view) {
   // Everything GitHub sells us belongs here, including the models the organisation has
   // switched off — their numbers are facts, and their absence from the verdict is a choice
   // worth showing next to them.
-  const rows = [...view.candidates, ...(view.excluded || [])].filter((candidate) => {
+  // The models switched off for us, and the ones nobody has scored, are listed only when the
+  // switch above the verdict opens the full board: by default the table is what you can start.
+  const rows = [...view.candidates, ...(state.showAll ? view.excluded || [] : [])].filter((candidate) => {
     if (state.waitFilter === null) return true;
     const minutes = loopMinutes(candidate);
     return minutes !== null && minutes !== undefined && minutes <= state.waitFilter;
@@ -1759,11 +1736,7 @@ function renderModels(view) {
             : ""
         }</td>
         <td class="num" data-sort="${candidate.score ?? ""}">${idx(candidate.score)}</td>
-        <td class="num dim" data-sort="${candidate.terminal_bench ?? ""}">${
-          candidate.terminal_bench === null || candidate.terminal_bench === undefined
-            ? "—"
-            : `${candidate.terminal_bench.toFixed(0)}%`
-        }</td>
+        <td class="num dim" data-sort="${agentic(candidate) ?? ""}">${idx(agentic(candidate))}</td>
         <td class="num" data-sort="${cr ?? ""}">${
           cr === null ? '<span class="dim" title="Artificial Analysis has not priced it">not priced</span>' : credits(cr)
         }</td>
@@ -1791,7 +1764,7 @@ function renderModels(view) {
 
   // Sold by GitHub, but nobody has scored it at a named effort: its price is a fact, its
   // quality is not known. Only shown while no time filter is on — it has no time to filter.
-  if (state.waitFilter === null) {
+  if (state.waitFilter === null && state.showAll) {
     (view.copilot_only || []).forEach((model) => {
       body.append(
         tag(`<tr class="off">
@@ -1816,8 +1789,9 @@ function renderModels(view) {
       `on their own hardware, except drift (AI Stupid Level, at each provider's default effort) and the ` +
       `Copilot price. Time per task is decode time with reasoning included; "≥" marks an effort nobody ` +
       `timed, shown at the time its slower-thinking sibling below already takes. A model with no time ` +
-      `at all is not slow — nobody has timed it. Coding is Terminal-Bench 4.0, shown for comparison and ` +
-      `never used to decide.`;
+      `at all is not slow — nobody has timed it. Agentic is the mean of AutomationBench and ` +
+      `Terminal-Bench 4.0 — what the subagent is chosen on.` +
+      (state.showAll ? "" : " Models switched off for us, or never scored, appear with the full board.");
   }
   makeSortable("models", { index: 1, dir: -1 });
 }
@@ -1831,9 +1805,7 @@ function renderMethod(view) {
   const disabled = (view.disabled_by_config || []).join(", ");
   const levels = (view.patience || [])
     .map((p) =>
-      p.scout === null && p.worker === null
-        ? `${p.label} (no limit)`
-        : `${p.label} (scout ${ceilingText(p.scout)}, worker ${ceilingText(p.worker)})`
+      p.worker === null ? `${p.label} (no limit)` : `${p.label} (${ceilingText(p.worker)})`
     )
     .join(", ");
   method.innerHTML = `
@@ -1842,28 +1814,27 @@ function renderMethod(view) {
       takes — always for the effort level named on the card, and all from the same runs.
       Drift comes from AI Stupid Level and acts as a veto rather than another number in an average: a
       model on the way down loses to a comparable model that is holding steady.</div>
-    <div>Roles are filled inside the selected tier's monthly credit budget, split
-      ${Math.round(assumptions.budget_shares.architect * 100)}/${Math.round(assumptions.budget_shares.worker * 100)}/${Math.round(assumptions.budget_shares.scout * 100)}:
+    <div>Three roles. The architect and the worker are sized on a small base day inside the tier,
+      split ${Math.round(assumptions.budget_shares.architect * 100)}/${Math.round(assumptions.budget_shares.worker * 100)}:
       the architect takes the best model its share affords, the worker climbs the value ladder while
-      a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}. The scout takes the cheapest model
-      that is good enough: at least ${Math.round(thresholds.scout_bar * 100)}% of the leader's score. A
-      share of the leader rather than a fixed score, because the index is re-based between versions and
-      the market climbs. A lower role never costs more per task, or scores more, than the role above
-      it. These picks are sized on a small base day; the rest of the tier's daily credits is shown as
-      throughput — more runs, not dearer models.</div>
+      a point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}, and never scores or costs more
+      than the architect. For mechanical work the worker's card names a quicker effort of the same
+      model — one that takes half the time or less. The rest of the tier's daily credits is shown as
+      throughput: more runs, not dearer models.</div>
     <div>The subagent is what the architect hands a sub-task to and does not watch. It is chosen on
       Artificial Analysis's agentic evaluations rather than the Intelligence Index: AutomationBench
       (multi-step work across tools and APIs) and Terminal-Bench 4.0 (agentic coding in a terminal),
-      averaged. Like the scout it takes the cheapest model that is good enough — at least
-      ${Math.round(assumptions.subagent_bar * 100)}% of the agentic leader — within the worker's
-      patience. Both evaluations run in Artificial Analysis's own agent harness, not in Copilot's, and
-      cost and time per task still come from the Intelligence Index runs.</div>
-    <div>Patience sets the longest a loop role may take over one task — Artificial Analysis's time per
-      index task, reasoning included: ${escapeHtml(levels)}. You iterate with the worker and the scout,
+      averaged. It starts at the cheapest model that reaches
+      ${Math.round(assumptions.subagent_bar * 100)}% of the agentic leader and climbs while an agentic
+      point costs at most $${thresholds.fair_usd_per_pp.toFixed(2)}. Both evaluations run in
+      Artificial Analysis's own agent harness, and cost and time per task still come from the
+      Intelligence Index runs.</div>
+    <div>Patience sets the longest the worker and the subagent may take over one task — Artificial
+      Analysis's time per index task, reasoning included: ${escapeHtml(levels)}. They are the loops,
       so one slow loop makes the whole session slow; the architect plans once and is never on this
-      clock. A variant nobody has timed cannot take a loop role while a limit is set — nothing says it
-      keeps to it — and the card names it; at Any pace it competes. An untimed effort is held to the
-      time of a lower effort of the same model when that one was timed.</div>
+      clock. A variant nobody has timed cannot take a loop role while a limit is set — nothing says
+      it keeps to it — and the card names it; at Any pace it competes. An untimed effort is held to
+      the time of a lower effort of the same model when that one was timed.</div>
     <div>The board is limited to models we can actually start: a model has to appear on GitHub's
       Copilot pricing page, and not be one this organisation has switched off
       (${escapeHtml(disabled || "none")}). A model Artificial Analysis has scored but not yet priced is
@@ -1894,8 +1865,6 @@ function renderAll({ animate = false } = {}) {
   renderFreshness(view.sources);
   renderVerdicts(view, animate);
   renderBudget(view, animate);
-  renderGaps((current && current.gaps) || []);
-  renderTasks(view);
   hideTip();
   renderMapTabs();
   renderMap(view);

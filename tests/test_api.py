@@ -137,7 +137,7 @@ def test_recommendations_are_served_from_the_archive():
     assert set(plans) == {"basic", "heavy", "power"}
     for by_patience in plans.values():
         for roles in by_patience.values():
-            assert set(roles) == {"architect", "worker", "scout", "subagent"}
+            assert set(roles) == {"architect", "worker", "subagent"}
             for role, pick in roles.items():
                 if role == "subagent" and pick is None:
                     continue  # the fixture board predates the agentic evaluations

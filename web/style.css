@@ -155,7 +155,8 @@ section { margin-top: 3.4rem; }
 .card.architect { border-top: 2px solid var(--violet); --accent: var(--violet); --band: color-mix(in srgb, var(--violet) 13%, transparent); }
 .card.worker { border-top: 2px solid var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 11%, transparent); }
 .card.subagent { border-top: 2px dashed var(--cyan); --accent: var(--cyan); --band: color-mix(in srgb, var(--cyan) 6%, transparent); }
-.card.scout { border-top: 2px solid var(--dim); --accent: var(--dim); --band: color-mix(in srgb, var(--dim) 11%, transparent); }
+.use-for { margin: 0; font-size: 0.82rem; color: var(--dim); }
+.use-for b { color: var(--text); font-weight: 600; margin-right: 0.3rem; }
 
 /* The role is the first thing to find on the card, so it gets a band across the whole box:
    the tier's colour, letterspaced caps, and the one-line job description beside it. */
@@ -196,9 +197,6 @@ section { margin-top: 3.4rem; }
 .card.architect .pick-effort {
   color: var(--violet-text); background: color-mix(in srgb, var(--violet) 18%, transparent); border-color: color-mix(in srgb, var(--violet) 50%, transparent);
 }
-.card.scout .pick-effort {
-  color: var(--text); background: color-mix(in srgb, var(--dim) 16%, transparent); border-color: color-mix(in srgb, var(--dim) 40%, transparent);
-}
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; margin-top: 0.35rem; }
 .metric { border-top: 1px solid var(--edge); padding-top: 0.4rem; }
 .metric b { font-family: var(--mono); font-size: 1.05rem; display: block; font-weight: 500; }
@@ -215,10 +213,6 @@ section { margin-top: 3.4rem; }
 .note { font-size: 0.82rem; color: var(--amber); margin: 0; }
 
 /* ---- gap tracks (the fit-axis device) ---- */
-.gaps { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 1.5rem; }
-.gap { background: var(--raise); border: 1px solid var(--edge); border-radius: 14px; padding: 1.1rem; }
-.gap h3 { font-size: 0.95rem; margin-bottom: 0.8rem; }
-.gap .verdict-line { font-size: 0.9rem; color: var(--dim); margin-top: 0.7rem; }
 
 /* ---- tables ---- */
 .table-scroll { overflow-x: auto; margin-top: 1.2rem; border: 1px solid var(--edge); border-radius: 14px; }

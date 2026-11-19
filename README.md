@@ -15,20 +15,20 @@ One page that merges three sources into one answer, and keeps the history behind
 | [GitHub Copilot docs](https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing) | What our Copilot enables, and what a million tokens costs |
 
 Three roles come out of it — **architect** (plans and decomposes), **worker** (does the typical
-job), **scout** (cheap and mechanical) — each filled by whichever model wins on today's data, not
-by a hard-coded list. The page also shows the *distance* between the roles, because the useful
-question is rarely "which is best" but "is the upgrade worth it here": sometimes a slightly dearer
-model costs pennies more and is far better, sometimes it costs five times more for half a point.
+job, and at a lower effort the mechanical one) and **subagent** (what the architect delegates to,
+chosen on agentic evaluations) — each filled by whichever model wins on today's data, not by a
+hard-coded list. The architect's card also says the *distance* to the worker, because the useful
+question is rarely "which is best" but "is the upgrade worth it here".
 
 On top of that sits the **AI-credit layer**: pick your Copilot credit tier (Basic / Heavy / Power)
-and the whole page re-answers for that monthly budget — which model each role can afford, what a
-month of ordinary work costs in credits, and how much headroom is left. The rate it converts with
+and the whole page re-answers for it — which model each role can afford, and what the rest of each
+working day's credits buys: so many more worker tasks, subagent runs or plans. The rate it converts with
 (1 AI credit = $0.01) is read out of GitHub's own pricing page rather than hardcoded. See
 [`docs/credits.md`](docs/credits.md) for the verified quotes, the workload model, and what each
 tier turns out to afford.
 
-The second switch is **patience**: how long one task may take on the worker and the scout (Fast,
-Balanced, Any). Those are the roles you iterate with — prompt, read, correct, prompt again — so one
+The second switch is **patience**: how long one task may take on the worker and the subagent
+(Fast, Balanced, Any). Those are the loops — prompt, read, correct, prompt again — so one
 slow loop makes the whole session slow; the same model can finish a task in a minute at one effort
 and seven at another. The architect plans once and is never on that clock.
 

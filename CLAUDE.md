@@ -4,7 +4,7 @@
 today.* It merges three sources — **Artificial Analysis** (Intelligence Index, cost per task and
 time per task, always per effort level, all from the same runs), **AI Stupid Level**
 (drift: is this model quietly getting worse) and **GitHub Copilot's models-and-pricing docs** (what
-we can actually pick at work, and what it bills) — into three roles: architect, worker, scout,
+we can actually pick at work, and what it bills) — into three roles: architect, worker, subagent,
 filled per AI-credit tier and per patience setting. CursorBench scored the board until
 2026-09-22; its archive stays readable. Python + FastAPI + SQLite in a single container on Unraid,
 served at `kvasir.blinkneuron.eu`. State is a SQLite archive under `/data`; there is no other
@@ -116,10 +116,10 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   task and the wait to the first answer are not, because reasoning effort *is* the time (Opus 5.5:
   1.3 min a task at low, 7.5 at xhigh). The only exception is the labelled lower-bound floor.
   `_speed_block()` keeps them apart on purpose. A zero means absent, never instant.
-- **Patience is a ceiling for the loop roles, never a score.** The worker and the scout are the
-  roles you iterate with, so a variant whose time per task (AA's decode time per index task,
-  reasoning included — every priced variant has one) passes the selected ceiling
-  (`budget.PATIENCE`: Fast 3/1.5 min, Balanced 6/3, Any) cannot hold one; the architect is exempt,
+- **Patience is a ceiling for the loop roles, never a score.** The worker is the role you iterate
+  with and the subagent is the loop the architect waits on, so a variant whose time per task (AA's
+  decode time per index task, reasoning included — every priced variant has one) passes the
+  selected ceiling (`budget.PATIENCE`: Fast 3 min, Balanced 6, Any) cannot hold either; the architect is exempt,
   because a plan is made once and deliberately. It replaced first an 80 tok/s floor, which barred
   whole models once the source timed everything, then the wait to the first answer, which says
   when a loop starts rather than how long it lasts. A ceiling is a promise about time, so under
@@ -127,11 +127,10 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   model (`recommend._task_floor`) — without that floor Opus 5.5 · Max, the slowest variant on the
   board, took a Fast worker's seat as "unmeasured" — and with no time at all it takes no loop seat,
   and the card names it. At Any pace it competes. Until 2026-10-14 untimed passed ("absence of
-  evidence decides nothing"); then Gemini 4 Argon · High, never timed, took both the Fast worker
-  and the Fast scout at 199 credits a task. Owner's call to reverse it. The loop roles climb a frontier
+  evidence decides nothing"); then Gemini 4 Argon · High, never timed, took the Fast worker's
+  seat at 199 credits a task. Owner's call to reverse it. The loop roles climb a frontier
   *rebuilt* from the quick variants, not the full frontier filtered — a slow rung can hide the
-  quick variant it dominated. The opening picks keep the stack's shape too: a scout never opens
-  dearer than its worker.
+  quick variant it dominated.
 - **The map splits each axis in the middle, and each x half has its own scale.** Cost splits at
   $1, time at the worker's patience limit, tokens at the geometric middle; y at the middle of the
   range, as on AA's own charts. A fixed split otherwise lands wherever the data puts it (75% of
@@ -145,23 +144,29 @@ reading with its real age, and the freshness chip goes amber. Never "fix" a pars
   buys past it is reported per role as `extra_per_day` (more worker tasks, subagent runs, or
   plans). This replaced a surplus walk that bought dearer models up to 80–90% of the tier: under a
   patience ceiling money cannot buy a better loop model, only more of them, and the walk left
-  Power at 7% used. A lower role may not score more *or cost more per task* than the role above
-  it (at Heavy/Fast the quick frontier once put Opus 5 · Medium on the scout at 219 credits under
-  a 182-credit worker). One model at three efforts is allowed — effort is the dial between the
-  roles.
+  Power at 7% used. The worker may not score more *or cost more per task* than the architect.
+  One model at several efforts is allowed — effort is the dial between the roles.
 - **The subagent is chosen on the agentic evaluations, not the Intelligence Index.** It is what
   the architect delegates to and does not watch. `agentic_score` is the mean of AutomationBench-AA
-  (`automation_bench`, multi-step work across tools and APIs) and Terminal-Bench 4.0; the pick is
-  the cheapest variant within the worker's patience at `SUBAGENT_BAR` (75%) of the agentic leader
-  — the scout's rule on a different axis, set with the role, not tuned. A variant without both
-  scores cannot take the seat; a board without them says so. Both run in AA's own harness, and
-  cost and time per task are still the Intelligence Index runs' — the method panel says so.
-- **The scout is the cheapest that is good enough, not the best the tier buys.** `SCOUT_BAR`
-  (75% of the leader's score, owner's call on 2026-10-09) within patience and the scout's share.
-  A share of the leader, never a fixed score: the index re-bases between versions and the market
-  climbs. The bar was set before looking at who it seats — re-tuning it until a favourite wins is
-  the same falsification as re-tuning the workload model. Nothing over the bar that fits → the
-  best that fits, flagged `under_bar` on the card, never an invented pick.
+  (`automation_bench`, multi-step work across tools and APIs) and Terminal-Bench 4.0. Within the
+  worker's patience it starts at the cheapest variant at `SUBAGENT_BAR` (75%) of the agentic
+  leader and climbs while an agentic point costs at most `FAIR_USD_PER_PP` — the worker's
+  discipline on a different axis. A share of the leader, never a fixed score; set with the role,
+  not tuned. It never costs more per task than the architect and is never its exact variant —
+  at Any pace the ladder once climbed onto Carbon · High, the architect itself, at 36 minutes a
+  task. Nothing over the bar within patience → the best that is, flagged `under_bar`. A
+  variant without both scores cannot take the seat; a board without them says so. Both run in
+  AA's own harness, and cost and time per task are still the Intelligence Index runs' — the
+  method panel says so.
+- **Three roles, not four: there is no scout.** Owner's call on 2026-11-19. The scout (cheapest
+  at 75% of the leader, for mechanical work) was the worker's own model at a lower effort in six
+  of nine plans on the November board. Its tasks and its share went to the worker; the worker's
+  card names a quicker effort of the same model (`budget.quick_option`, at most `QUICK_SHARE` of
+  the worker's time) for renames, commit messages and lookups. An effort dial, not a role.
+- **Simplify before adding.** The page lost the task table (each row repeated a card's pick —
+  the tasks are now a "Use it for" line on the cards) and the gap tracks (one gap left, said on
+  the architect's card). Models switched off for us, never scored, or not in Copilot appear in
+  the tables only with the full board open. When a section only restates another, remove it.
 - **Every deploy a user can see adds a changelog entry — that is the version bump.**
   `kvasir/changelog.py` is the single source: `VERSION` is its newest entry, `/api/changelog`
   serves it, and the page compares it with the last version the browser showed

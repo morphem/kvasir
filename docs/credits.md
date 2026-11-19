@@ -46,11 +46,11 @@ own result (`kvasir/budget.py`):
 
 | Assumption | Value | Why |
 |---|---|---|
-| Working days | 21 | one month |
-| Agent tasks per day | 6 | the *average* engineer: one project or integration at a time, no parallel sessions |
-| Role mix | 10% planning · 50% ordinary · 40% mechanical | matches the task catalogue on the page |
+| Working days | 20 | owner's figure, 2026-11-19: a tier is a daily allowance |
+| Agent tasks per day | 6 | the *base day* the picks are sized on — not a forecast; the rest of the day is throughput |
+| Role mix | 10% planning · 90% ordinary | the scout's 40% mechanical share went to the worker on 2026-11-19 |
 | Overhead | ×1.15 | chat, follow-ups and retries are billed but are not benchmark-shaped tasks |
-| Budget split | 35% architect · 45% worker · 20% scout | planning is the smallest slice of tasks and the largest slice of value |
+| Budget split | 35% architect · 65% worker | planning is the smallest slice of tasks and the largest slice of value; until 2026-11-19 35/45/20 with a scout |
 
 A "task" is one **Artificial Analysis Intelligence Index task**: the weighted average of one task
 across the index's ten evaluations — some agentic and long (AA-Briefcase, Terminal-Bench,
@@ -82,35 +82,32 @@ were not re-derived — treat that as an open question, not as a tuned result.
   concerned, buy the best you can afford. Never on the patience clock.
 - **Worker** — climbs the cost/quality frontier while each step costs at most **$0.75 per
   point** and still fits its share.
-- **Scout** — the **cheapest variant that is good enough**: at least **75% of the leader's score**
-  (`SCOUT_BAR`), within the scout's patience and its share. Mechanical work does not repay quality
-  past "enough", and the scout should not change when a tier does. The bar is a share of the
-  leader, not a fixed score, because the Intelligence Index is re-based between versions and the
-  market climbs at a given price. 75% was chosen on 2026-10-09 as "three quarters of the frontier",
-  before looking at who it seats. When nothing over the bar is quick enough and affordable, the
-  scout takes the best that is, and the card says it is under the bar. Until 2026-10-09 the scout
-  climbed while a step was a bargain (≤ $0.15 per point) — the best its share could buy.
-- **Patience** — the worker and the scout only climb a frontier rebuilt from the variants that
-  finish a task inside the selected time: **Fast** 3 / 1.5 minutes, **Balanced** 6 / 3, **Any** no
-  limit (worker / scout, Artificial Analysis's time per index task). These are the roles you iterate
-  with, so the length of one loop is the length of the job. A variant nobody timed is held to the
-  time of a timed lower effort of the same model; with no time at all it takes no loop seat while a
-  limit is set (since 2026-10-14 — before, it passed, and the untimed Gemini 4 Argon · High took the
-  Fast worker and the Fast scout at once). At Any pace it competes.
-- **Subagent** (since 2026-11-19) — the agent the architect delegates to. The cheapest variant
-  within the worker's patience at **75% of the agentic leader**, where the agentic score is the
-  mean of AutomationBench-AA and Terminal-Bench 4.0. Not bound by a share: its runs are what the
-  spare allowance buys.
+- **Quick effort** (since 2026-11-19, replacing the scout) — the worker's own model at an effort
+  that takes at most half the worker's time per task, named on its card for mechanical work. The
+  scout — the cheapest variant at 75% of the leader (`SCOUT_BAR`, 2026-10-09 to 2026-11-19) — was
+  that same model at a lower effort in six of nine plans.
+- **Patience** — the worker and the subagent only climb a frontier rebuilt from the variants that
+  finish a task inside the selected time: **Fast** 3 minutes, **Balanced** 6, **Any** no limit
+  (Artificial Analysis's time per index task). These are the loops, so the length of one loop is
+  the length of the job. A variant nobody timed is held to the time of a timed lower effort of the
+  same model; with no time at all it takes no loop seat while a limit is set (since 2026-10-14).
+  At Any pace it competes.
+- **Subagent** (since 2026-11-19) — the agent the architect delegates to. Within the worker's
+  patience, from the cheapest variant at **75% of the agentic leader**, climbing while an agentic
+  point costs at most $0.75; the agentic score is the mean of AutomationBench-AA and
+  Terminal-Bench 4.0. Not bound by a share: its runs are what the spare allowance buys. In v2.12
+  it took the cheapest over the bar and stopped, which seated GPT-6.1 Sol · Medium (55 points,
+  36 credits) over GPT-6.2 Sol · Medium (63, 41).
 - **Throughput** (since 2026-11-19, replacing the surplus walk) — a tier is credits ÷ 20 working
   days, to be used up. The base day above takes a small part of it; the rest is printed as what it
   buys per role, alone: so many more worker tasks, subagent runs or plans a day. Until 2026-11-19
   the plan instead bought dearer models with the surplus up to 80% of the tier (never past 90%);
   under a patience ceiling that stopped at 7% on Power, because money cannot buy a quicker loop.
-  A lower role may not score more, or cost more per task, than the role above it, and may not land
-  on another role's exact variant.
+  The worker may not score more, or cost more per task, than the architect.
 
-The per-point ceilings are the same thresholds the value ladder shows on the page, and the scout's
-bar is printed in the method panel, so nothing here is a private knob.
+The per-point ceilings are the same thresholds the value ladder shows on the page, and the
+subagent's bar is printed in the method panel, so nothing here is a private knob. The sections
+below are earlier analyses, kept as they were — they still name the scout.
 
 ## Since 2026-10-09: the scout at 75% of the leader (data of 2026-10-08)
 

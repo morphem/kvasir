@@ -90,7 +90,7 @@
         <span><i class="key-pareto"></i> Pareto line</span>
         <span><i style="background:var(--violet)"></i> Architect</span>
         <span><i style="background:var(--cyan)"></i> Worker</span>
-        <span><i style="background:var(--dim)"></i> Scout</span>
+        <span><i style="background:var(--cyan)"></i> Subagent</span>
         <span><i style="background:var(--dot)"></i> other models we can start</span>
         <span id="key-market" hidden><i class="key-ghost"></i> not available to us</span>
       </div>
@@ -119,34 +119,6 @@
       </table>
     </div>
     <p class="dim" id="budget-assumptions" style="margin:1rem 0 0;font-size:.85rem"></p>
-  </section>
-
-  <section data-panel="value" hidden="until-found">
-    <div class="eyebrow">Is the upgrade worth it</div>
-    <h2>The distance between roles</h2>
-    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      Cyan means the price gap is small next to the quality gap — take the dearer model, even for
-      simple work. Violet means you are paying a lot for very little — stay on the cheaper one.
-    </p>
-    <div class="gaps" id="gaps"></div>
-  </section>
-
-  <section data-panel="tasks" hidden="until-found">
-    <div class="eyebrow">Quick pick</div>
-    <h2>Task → agent</h2>
-    <p class="dim" style="margin:.5rem 0 0;max-width:70ch">
-      The jobs that actually land here. On the right, the model and the effort level you start
-      with — so you do not have to compare benchmarks yourself.
-    </p>
-    <div class="table-scroll" tabindex="0" role="region" aria-label="Task to agent">
-      <table id="tasks">
-        <thead><tr>
-          <th>Task</th><th>Role</th><th>Start with</th>
-          <th class="num">Intelligence</th><th class="num">Min / task</th><th class="num">Credits / task</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
   </section>
 
   <section data-panel="value" hidden="until-found">
@@ -199,9 +171,9 @@
         <h2>Score, price and time, per effort</h2>
         <p class="dim" style="margin:.5rem 0 0;max-width:74ch">
           The same model is a different tool at a different effort: Opus 5.5 finishes a task in
-          about a minute at low and seven and a half at extra high. You iterate with the worker and
-          the scout, so the length of one loop is the length of the job. Filter by the minutes per
-          task you will accept, or sort any column.
+          about a minute at low and seven and a half at extra high. You iterate with the worker, so
+          the length of one loop is the length of the job. Filter by the minutes per task you will
+          accept, or sort any column.
         </p>
       </div>
       <div class="controls" id="wait-filter" role="group" aria-label="Longest time per task"></div>
@@ -211,7 +183,7 @@
         <thead><tr>
           <th>Model · effort</th>
           <th class="num" title="Artificial Analysis Intelligence Index">Intelligence</th>
-          <th class="num" title="Terminal-Bench 4.0, agentic coding in a terminal — shown for comparison, never used to decide">Coding</th>
+          <th class="num" title="Mean of AutomationBench and Terminal-Bench 4.0 — what the subagent is chosen on">Agentic</th>
           <th class="num" title="AI credits for one Intelligence Index task">Credits / task</th>
           <th class="num" title="Minutes one Intelligence Index task takes, reasoning included — the length of one loop">Min / task</th>
           <th data-nosort></th>

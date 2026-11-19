@@ -296,7 +296,7 @@ def _ladder_verdict(per_pp: float | None) -> str:
 def gaps(roles: dict) -> list[dict]:
     """The distance between the roles — the thing that decides whether to escalate."""
     out = []
-    for lower, upper in (("scout", "worker"), ("worker", "architect")):
+    for lower, upper in (("worker", "architect"),):
         if lower not in roles or upper not in roles:
             continue
         low, high = roles[lower]["pick"], roles[upper]["pick"]
@@ -463,6 +463,6 @@ def build(
         "thresholds": {
             "bargain_usd_per_pp": budget.BARGAIN_USD_PER_PP,
             "fair_usd_per_pp": budget.FAIR_USD_PER_PP,
-            "scout_bar": budget.SCOUT_BAR,
+            "subagent_bar": budget.SUBAGENT_BAR,
         },
     }

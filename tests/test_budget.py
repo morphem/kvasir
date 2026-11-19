@@ -54,7 +54,7 @@ def test_every_tier_gets_a_full_plan_that_states_its_arithmetic():
     for tier in payload["budget_tiers"]:
         plan = payload["plans"][tier["id"]][budget.DEFAULT_PATIENCE]
         assert plan["usd"] == round(tier["credits"] * 0.01, 2)
-        assert set(plan["roles"]) == {"architect", "worker", "scout", "subagent"}
+        assert set(plan["roles"]) == {"architect", "worker", "subagent"}
         rebuilt = sum(
             role["month_credits"] for name, role in plan["roles"].items()
             if role["pick"] and name != "subagent"
@@ -76,13 +76,12 @@ def test_a_tight_tier_buys_cheaper_models_than_a_generous_one():
 def test_the_plan_fits_the_month_it_was_built_for():
     for plan in every_plan(view()):
         assert plan["month_credits"] <= plan["credits"], f"{plan['name']} overspends its own tier"
-        assert plan["headroom_credits"] >= 0
 
 
 def test_a_tier_too_small_for_anything_says_so():
     payload = view(tiers=[{"id": "sliver", "name": "Sliver", "credits": 10}])
     roles = payload["plans"]["sliver"][budget.DEFAULT_PATIENCE]["roles"]
-    base = [roles[name] for name in ("architect", "worker", "scout")]
+    base = [roles[name] for name in ("architect", "worker")]
     assert all(role["pick"] is None for role in base)
     assert all("Nothing on the board" in role["why"] for role in base)
 
@@ -92,26 +91,19 @@ def test_the_mechanical_role_never_outranks_the_planning_one():
     payload = view(tiers=[{"id": "silly", "name": "Silly", "credits": 5_000_000}])
     for plan in payload["plans"]["silly"].values():
         roles = plan["roles"]
-        assert roles["scout"]["pick"]["score"] <= roles["worker"]["pick"]["score"]
         assert roles["worker"]["pick"]["score"] <= roles["architect"]["pick"]["score"]
-        # ...and on price: a scout dearer than the worker is a worse worker, not a scout.
-        assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
         assert roles["worker"]["pick"]["cost_uusd"] <= roles["architect"]["pick"]["cost_uusd"]
-
-
-
-
 
 
 def test_a_role_you_iterate_with_never_outlasts_its_patience():
     """The architect may be slow — a plan is made once, deliberately. The loop roles may not."""
     for plan in every_plan(view()):
         ceilings = budget.PATIENCE[plan["patience"]]
-        for name in ("worker", "scout"):
+        for name in ("worker", "subagent"):
             pick = plan["roles"][name]["pick"]
             minutes = budget.loop_minutes(pick) if pick else None
-            if minutes is not None and ceilings[name] is not None:
-                assert minutes <= ceilings[name], f"{name} takes {minutes} min at {plan['patience']}"
+            if minutes is not None and ceilings["worker"] is not None:
+                assert minutes <= ceilings["worker"], f"{name} takes {minutes} min at {plan['patience']}"
 
 
 def test_an_untimed_variant_cannot_promise_a_ceiling():
@@ -125,9 +117,8 @@ def test_an_untimed_variant_cannot_promise_a_ceiling():
 
 
 def test_an_untimed_model_takes_no_loop_seat_under_a_ceiling_and_is_named():
-    """Gemini 4 Argon · High, scored and priced but never timed, once took both the Fast
-    worker and the Fast scout. Under a ceiling it now takes neither, and the worker's card
-    says why (the scout's names only a cheaper variant it passed over)."""
+    """Gemini 4 Argon · High, scored and priced but never timed, once took the Fast worker's
+    seat. Under a ceiling it no longer does, and the worker's card says why."""
     rows = [
         aa_row("planner", "max", 60.0, 2_000_000, minutes=10),
         aa_row("argon", "high", 55.0, 400_000),
@@ -135,15 +126,9 @@ def test_an_untimed_model_takes_no_loop_seat_under_a_ceiling_and_is_named():
     ]
     view = recommend.build(rows, [], sold("planner", "argon", "quick"), Settings(), [])
     fast = view["plans"]["heavy"]["fast"]["roles"]
-    assert fast["worker"]["pick"]["key"] == fast["scout"]["pick"]["key"] == "quick"
+    assert fast["worker"]["pick"]["key"] == "quick"
     assert "Argon · High" in fast["worker"]["why"] and "not timed" in fast["worker"]["why"]
     assert view["plans"]["basic"]["any"]["roles"]["worker"]["pick"]["key"] == "argon"
-
-
-
-
-
-
 
 
 def test_assumptions_are_published_with_the_answer():
@@ -190,79 +175,6 @@ def test_a_richer_tier_is_never_told_it_fell_short():
             assert reach["score"] >= slot["pick"]["score"]
 
 
-def test_a_scout_never_opens_dearer_than_its_worker():
-    """At Heavy/Fast the scout's quick frontier ended on Opus 5.5 · Low (55 credits) while the
-    worker's ended on GPT-6 Sol · Extra High (53): the worker had skipped it for a cheaper,
-    better variant. The opening picks keep the stack's shape too, not only the surplus walk."""
-    rows = [
-        aa_row("a", "medium", 39.8, 248_000, minutes=1.0),
-        aa_row("b", "low", 42.3, 551_000, minutes=1.3),    # quick enough for the scout
-        aa_row("c", "xhigh", 44.1, 532_000, minutes=2.5),  # too slow for it, fine for the worker
-    ]
-    payload = recommend.build(rows, [], sold("a", "b", "c"), Settings(), [], credit_usd=0.01)
-    for by_patience in payload["plans"].values():
-        roles = by_patience["fast"]["roles"]
-        assert roles["worker"]["pick"]["key"] == "c"
-        assert roles["scout"]["pick"]["cost_uusd"] <= roles["worker"]["pick"]["cost_uusd"]
-        assert roles["scout"]["pick"]["key"] == "a"
-
-
-def test_the_scout_is_the_cheapest_variant_over_the_bar():
-    """Not the best the tier buys: the cheapest that reaches SCOUT_BAR of the leader."""
-    payload = view()
-    priced = [c for c in payload["candidates"] if c["priced"] and c["available"]]
-    leader = max(c["score"] for c in priced)
-    for tier_id, by_patience in payload["plans"].items():
-        for patience_id, plan in by_patience.items():
-            scout = plan["roles"]["scout"]
-            bar = scout["bar"]
-            assert bar["share"] == budget.SCOUT_BAR
-            assert bar["score"] == round(leader * budget.SCOUT_BAR, 1)
-            if scout["under_bar"]:
-                assert "Nothing at 75%" in scout["why"]
-                continue
-            pick = scout["pick"]
-            assert pick["score"] >= bar["score"]
-            ceiling = budget.PATIENCE[patience_id]["scout"]
-            cheaper = [
-                c for c in priced
-                if c["score"] >= bar["score"]
-                and c["cost_uusd"] < pick["cost_uusd"]
-                and budget.quick_enough(c, ceiling)
-            ]
-            assert not cheaper, f"{tier_id}/{patience_id}: {cheaper[0]['label']} was cheaper"
-
-
-
-
-def test_a_cheaper_variant_too_slow_for_the_scout_is_named():
-    rows = [
-        aa_row("top", "max", 60.0, 5_000_000, minutes=2.0),
-        aa_row("slowcheap", "max", 46.0, 100_000, minutes=6.0),  # over the bar, too slow
-        aa_row("quick", "low", 47.0, 200_000, minutes=1.0),
-        aa_row("weak", "low", 30.0, 10_000, minutes=0.5),  # quick and cheap, under the bar
-    ]
-    payload = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
-    balanced = payload["plans"]["heavy"]["balanced"]["roles"]["scout"]
-    assert balanced["pick"]["key"] == "quick"
-    assert balanced["speed_blocked"]["label"] == "Slowcheap · Max"
-    anything = payload["plans"]["heavy"]["any"]["roles"]["scout"]
-    assert anything["pick"]["key"] == "slowcheap"
-
-
-def test_a_scout_with_nothing_over_the_bar_takes_the_best_that_fits_and_says_so():
-    rows = [
-        aa_row("top", "max", 60.0, 5_000_000, minutes=2.0),
-        aa_row("weak", "low", 30.0, 10_000, minutes=0.5),
-        aa_row("weaker", "low", 25.0, 5_000, minutes=0.5),
-    ]
-    payload = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
-    scout = payload["plans"]["heavy"]["fast"]["roles"]["scout"]
-    assert scout["under_bar"] is True
-    assert scout["pick"]["key"] == "weak"
-    assert "Nothing at 75% of the leader (45.0)" in scout["why"]
-
-
 def test_the_spare_allowance_is_reported_as_throughput():
     """Unused credits buy nothing, so the day's allowance past the base day becomes more runs."""
     for plan in every_plan(view()):
@@ -286,25 +198,62 @@ def agentic_row(key, effort, score, cost_uusd, automation, terminal, minutes=1.0
             "automation_bench": automation, "terminal_bench": terminal}
 
 
-def test_the_subagent_is_the_cheapest_good_enough_on_the_agentic_evaluations():
-    """Chosen on AutomationBench and Terminal-Bench, not the Intelligence Index."""
-    rows = [
-        agentic_row("smart", "max", 60.0, 5_000_000, 70.0, 60.0, minutes=2),   # leader: 65
-        agentic_row("doer", "low", 40.0, 200_000, 60.0, 40.0),                 # 50: over 48.75
-        agentic_row("clever", "low", 50.0, 150_000, 30.0, 20.0),               # higher index, weak agent
-        agentic_row("slowdoer", "low", 40.0, 100_000, 62.0, 42.0, minutes=9),  # over the bar, too slow
-    ]
-    view = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
-    sub = view["plans"]["heavy"]["balanced"]["roles"]["subagent"]
-    assert sub["pick"]["key"] == "doer"
-    assert sub["agentic_score"] == 50.0
-    assert sub["speed_blocked"]["label"].startswith("Slowdoer")
-    assert view["plans"]["heavy"]["any"]["roles"]["subagent"]["pick"]["key"] == "slowdoer"
-
-
 def test_a_board_without_agentic_scores_says_so_instead_of_picking():
     payload = view()
     for plan in every_plan(payload):
         sub = plan["roles"]["subagent"]
         if sub["pick"] is None:
             assert "agentic" in sub["why"]
+
+
+def test_the_subagent_climbs_the_agentic_ladder_from_the_bar():
+    """Chosen on AutomationBench and Terminal-Bench, not the Intelligence Index: from the
+    cheapest over the bar, up while an agentic point is fair. v2.12 stopped at the cheapest
+    and seated an older model eight points worse for five credits less."""
+    rows = [
+        agentic_row("smart", "max", 60.0, 20_000_000, 70.0, 60.0, minutes=2),  # leader 65, the architect
+        agentic_row("doer", "low", 40.0, 200_000, 60.0, 40.0),                 # 50: over 48.75
+        agentic_row("sharper", "medium", 45.0, 300_000, 66.0, 46.0),           # 56 for +$0.10
+        agentic_row("clever", "low", 50.0, 150_000, 30.0, 20.0),               # higher index, weak agent
+        agentic_row("slowdoer", "low", 40.0, 400_000, 70.0, 50.0, minutes=9),  # 60, fair, too slow
+    ]
+    view = recommend.build(rows, [], sold(*(r["model_key"] for r in rows)), Settings(), [], credit_usd=0.01)
+    sub = view["plans"]["heavy"]["balanced"]["roles"]["subagent"]
+    assert sub["pick"]["key"] == "sharper"
+    assert sub["agentic_score"] == 56.0
+    assert sub["speed_blocked"]["label"].startswith("Slowdoer")
+    assert view["plans"]["heavy"]["any"]["roles"]["subagent"]["pick"]["key"] == "slowdoer"
+
+
+def test_the_worker_card_names_a_quicker_effort_of_its_own_model():
+    """The scout's work moved to the worker, at an effort that takes half the time or less."""
+    rows = [
+        aa_row("planner", "max", 60.0, 2_000_000, minutes=10),
+        aa_row("sol", "xhigh", 55.0, 600_000, minutes=5),
+        aa_row("sol", "medium", 50.0, 400_000, minutes=3),   # not quick enough: over half
+        aa_row("sol", "low", 40.0, 180_000, minutes=1.5),
+        aa_row("other", "low", 45.0, 100_000, minutes=1),    # quicker, but another model
+    ]
+    view = recommend.build(rows, [], sold("planner", "sol", "other"), Settings(), [], credit_usd=0.01)
+    worker = view["plans"]["heavy"]["balanced"]["roles"]["worker"]
+    assert (worker["pick"]["key"], worker["pick"]["effort"]) == ("sol", "xhigh")
+    assert worker["quick"]["label"].endswith("Low")
+    assert worker["quick"]["task_minutes"] == 1.5
+
+
+def test_the_subagent_never_costs_more_than_the_architect():
+    """Delegating to a dearer model is not delegation: at Any pace the agentic ladder once
+    climbed onto the architect's own variant, at 36 minutes a task."""
+    for plan in every_plan(view()):
+        roles = plan["roles"]
+        sub, arch = roles["subagent"]["pick"], roles["architect"]["pick"]
+        if sub and arch:
+            assert sub["cost_uusd"] <= arch["cost_uusd"]
+            assert (sub["key"], sub["effort"]) != (arch["key"], arch["effort"])
+    rows = [
+        agentic_row("planner", "max", 60.0, 900_000, 80.0, 70.0, minutes=30),
+        agentic_row("doer", "low", 40.0, 200_000, 60.0, 50.0),
+    ]
+    view_ = recommend.build(rows, [], sold("planner", "doer"), Settings(), [], credit_usd=0.01)
+    assert view_["plans"]["heavy"]["any"]["roles"]["subagent"]["pick"]["key"] == "doer"
+

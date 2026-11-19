@@ -17,6 +17,37 @@ from __future__ import annotations
 
 CHANGELOG: list[dict] = [
     {
+        "version": "2.13",
+        "date": "2026-11-19",
+        "title": "Three roles, and a shorter page",
+        "items": [
+            {
+                "text": "The scout is gone. On today's data it was the worker's own model at a lower "
+                "effort, so its work moved to the worker: the worker's card now names the quicker "
+                "effort to use for renames, commit messages and “where is this”. Patience is one "
+                "limit per setting — Fast 3 min, Balanced 6.",
+            },
+            {
+                "text": "The subagent now climbs while an agentic point is cheap, instead of stopping "
+                "at the cheapest model that is good enough. Today that is GPT-6.2 Sol at High rather "
+                "than the older GPT-6.1 Sol: eight points better on the agentic evaluations for a "
+                "few credits more.",
+            },
+            {
+                "text": "Each card says what its role is for, so the Task → agent tab is gone. The gap "
+                "between worker and architect is a line on the architect's card, and the other tab "
+                "is now just the value ladder.",
+                "where": {"panel": "value"},
+            },
+            {
+                "text": "All models and Drift list what we can start. Models switched off for us, never "
+                "scored, or not in Copilot appear when you show the full board. The Coding column is "
+                "now Agentic — the score the subagent is chosen on.",
+                "where": {"panel": "models"},
+            },
+        ],
+    },
+    {
         "version": "2.12",
         "date": "2026-11-19",
         "title": "A fourth role, the subagent — and a tier read as a day to use up",
@@ -410,7 +441,6 @@ CHANGELOG: list[dict] = [
             },
             {
                 "text": "The task list maps everyday jobs to a role and a model.",
-                "where": {"panel": "tasks"},
             },
             {
                 "text": "Drift over time from AI Stupid Level, and every reading archived.",
@@ -424,5 +454,5 @@ VERSION = CHANGELOG[0]["version"]
 
 # The page's panel ids and map ids, which a "show me" button may open. Kept here so a test can
 # hold every entry to them; the page itself defines the same ids in web/app.js.
-PANELS = {"map", "tasks", "budget", "value", "models", "drift", "method"}
+PANELS = {"map", "budget", "value", "models", "drift", "method"}
 MAPS = {"cost", "time", "tokens"}
